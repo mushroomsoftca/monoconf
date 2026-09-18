@@ -22,6 +22,7 @@ from monoconf.errors import (
     ValidationFailed,
 )
 from monoconf.fields import Field
+from monoconf.merge import Origin, SourceKind
 from monoconf.settings import settings
 
 __all__ = [
@@ -32,10 +33,12 @@ __all__ = [
     "IgnoredValue",
     "MonoconfError",
     "MonoconfWarning",
+    "Origin",
     "OutputRequested",
     "SchemaError",
     "ShowConfigRequested",
     "SourceError",
+    "SourceKind",
     "UnknownConfigKey",
     "UnreadableSource",
     "ValidationFailed",
