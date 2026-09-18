@@ -25,6 +25,7 @@ __all__ = [
     "leaves",
     "merge",
     "origins_for",
+    "set_leaf",
 ]
 
 
@@ -133,3 +134,18 @@ def _origin_of(origins: Mapping[str, Origin], path: str) -> Origin:
             "resolved value has to know where it came from; the source is at fault."
         )
     return origin
+
+
+def set_leaf(values: Values, path: str, value: Any) -> None:
+    """Set a dotted path in a value tree, creating the branches it needs.
+
+    The inverse of `leaves`, for a source that knows dotted paths and has to hand
+    back the nested shape the schema has. The path's branches must be branches --
+    which the definition-time checks guarantee, a field being either a leaf or a
+    model and never both.
+    """
+    head, _, rest = path.partition(".")
+    if not rest:
+        values[head] = value
+        return
+    set_leaf(values.setdefault(head, {}), rest, value)

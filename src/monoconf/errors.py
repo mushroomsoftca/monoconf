@@ -7,6 +7,15 @@ resolution. `load()` turns the resolution errors into a stderr message plus
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from pydantic import ValidationError
+
+if TYPE_CHECKING:  # merge.py imports this module, so the import cannot be real
+    from collections.abc import Mapping
+
+    from monoconf.merge import Origin
+
 __all__ = [
     "ConfigFileError",
     "HelpRequested",
@@ -20,6 +29,7 @@ __all__ = [
     "UnknownConfigKey",
     "UnreadableSource",
     "ValidationFailed",
+    "render_validation_error",
 ]
 
 
@@ -84,3 +94,30 @@ class IgnoredValue(MonoconfWarning):
 
 class UnreadableSource(MonoconfWarning):
     """A config path or drop-in directory exists but could not be read."""
+
+
+def render_validation_error(
+    prog: str,
+    origins: Mapping[str, Origin],
+    error: ValidationError,
+) -> str:
+    """Rewrite pydantic's validation errors for whoever has to act on them.
+
+    Pydantic's own output is addressed to the author of the model. The operator
+    reading this never saw it, and needs to know which setting is wrong and which
+    file or variable it came from. One block per error; never only the first.
+    """
+    # No "try --help" line here: that is advice for someone at a command line, and
+    # load() is the only caller that knows it is talking to one.
+    lines = [f"{prog}: invalid configuration", ""]
+    for detail in error.errors():
+        path = ".".join(str(part) for part in detail["loc"])
+        lines.append(f"  {path or '(root)'}: {detail['msg']}")
+        origin = origins.get(path)
+        if origin is None:
+            # Nothing set it, which is what a missing required field looks like.
+            lines.append("    no value from any source")
+        else:
+            lines.append(f"    value {detail['input']!r} from {origin.describe()}")
+        lines.append("")
+    return "\n".join(lines).rstrip()

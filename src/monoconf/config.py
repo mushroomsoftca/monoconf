@@ -1,20 +1,35 @@
-"""The `Config` base class.
+"""The `Config` base class and the resolver behind it.
 
 A subclass is introspected once, at class-definition time: its `Spec` is derived
 and its schema validated, so a malformed schema fails on import rather than at
-`load()`.
+`load()`. Resolution itself is a fold over the sources, in one fixed order, with
+one validation pass at the end.
 """
 
 from __future__ import annotations
 
+import os
+import sys
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
+from monoconf.errors import (
+    HelpRequested,
+    MonoconfError,
+    OutputRequested,
+    ValidationFailed,
+    render_validation_error,
+)
+from monoconf.merge import Layer, Origin, merge
 from monoconf.schema import Spec, build_spec
-from monoconf.settings import settings
+from monoconf.settings import program_name, settings
+from monoconf.sources import Context, cli, defaults
 
 __all__ = ["Config"]
+
+_ORIGIN_ATTR = "__monoconf_origin__"
 
 
 class Config(BaseModel):
@@ -30,6 +45,13 @@ class Config(BaseModel):
     if TYPE_CHECKING:
         __monoconf_spec__: ClassVar[Spec]
 
+        # Declared as a read-only property for type checkers only. A plain
+        # annotation would make pydantic's dataclass_transform treat it as a field
+        # and demand it as a constructor argument; at runtime it is attached to the
+        # resolved instance with object.__setattr__.
+        @property
+        def __monoconf_origin__(self) -> Mapping[str, Origin]: ...
+
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         # Runs after pydantic has finished building the model, so model_fields is
@@ -40,25 +62,89 @@ class Config(BaseModel):
     @classmethod
     def load(
         cls,
-        argv: list[str] | None = None,
-        env: dict[str, str] | None = None,
+        argv: Sequence[str] | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> Self:
         """Resolve the configuration with CLI semantics.
 
-        Bad input writes to stderr and raises `SystemExit(2)`; `--help` prints and
-        exits 0. Use this in `main()`.
+        Bad input writes a message to stderr and raises `SystemExit(2)`; `--help`
+        prints and exits 0. Use this in `main()`.
         """
-        raise NotImplementedError("load() lands with the CLI source (M5).")
+        try:
+            return cls.resolve(argv=argv, env=env)
+        except OutputRequested as requested:
+            _write(sys.stdout, requested.text)
+            raise SystemExit(requested.exit_code) from None
+        except MonoconfError as error:
+            prog = program_name(cls.__monoconf_spec__.settings)
+            _write(sys.stderr, f"{prog}: {error}\nTry '{prog} --help' for usage.")
+            raise SystemExit(2) from None
 
     @classmethod
     def resolve(
         cls,
-        argv: list[str] | None = None,
-        env: dict[str, str] | None = None,
+        argv: Sequence[str] | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> Self:
         """Resolve the configuration with library semantics.
 
         Raises `MonoconfError` subclasses rather than exiting, and reports `--help`
-        as `HelpRequested`. Use this in tests and when embedding.
+        as `HelpRequested` carrying the rendered text. Use this in tests and when
+        embedding.
+
+        `argv=None` means `sys.argv[1:]` and `env=None` means `os.environ`; an empty
+        sequence or mapping means exactly that, not a default.
         """
-        raise NotImplementedError("resolve() lands with the CLI source (M5).")
+        spec = cls.__monoconf_spec__
+        ctx = Context(
+            argv=tuple(sys.argv[1:] if argv is None else argv),
+            env=os.environ if env is None else env,
+        )
+        # Pass one, before anything can complain about a missing positional.
+        meta = cli.parse_meta(spec, ctx.argv)
+
+        lower_values, lower_origins = merge(_lower_layers(spec, ctx))
+        if meta.help_requested:
+            raise HelpRequested(cli.render_help(spec, lower_values))
+
+        values, origins = merge([(lower_values, lower_origins), cli.collect(spec, ctx)])
+        try:
+            resolved = cls.model_validate(values)
+        except ValidationError as error:
+            prog = program_name(spec.settings)
+            raise ValidationFailed(
+                render_validation_error(prog, origins, error)
+            ) from error
+        # The instance is frozen, and origins are not a field: this is the one way
+        # to attach them, and it leaves model_dump, equality and repr untouched.
+        object.__setattr__(resolved, _ORIGIN_ATTR, origins)
+        return resolved
+
+    def origin_of(self, path: str) -> Origin:
+        """Where the value at a dotted field path came from."""
+        origins: Mapping[str, Origin] | None = getattr(self, _ORIGIN_ATTR, None)
+        if origins is None:
+            raise MonoconfError(
+                f"this {type(self).__name__} was constructed directly, so it has no "
+                "provenance. Resolve one with load() or resolve() to ask where a "
+                "value came from."
+            )
+        try:
+            return origins[path]
+        except KeyError:
+            raise MonoconfError(
+                f"{type(self).__name__} has no field '{path}'."
+            ) from None
+
+
+def _lower_layers(spec: Spec, ctx: Context) -> list[Layer]:
+    """Every layer below the command line, lowest priority first.
+
+    Files and the environment slot in here as they land; the ordering of the chain
+    lives in this one place and nowhere else.
+    """
+    return [defaults.collect(spec, ctx)]
+
+
+def _write(stream: Any, text: str) -> None:
+    stream.write(text if text.endswith("\n") else f"{text}\n")

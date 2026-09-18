@@ -8,6 +8,7 @@ optional: each key is either derivable from `app_name` or has a fixed default.
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +16,14 @@ from typing import Any, Final, Unpack, cast
 
 from pydantic import BaseModel, ConfigDict
 
-__all__ = ["UNSET", "ConfigPaths", "Settings", "SettingsConfigDict", "settings"]
+__all__ = [
+    "UNSET",
+    "ConfigPaths",
+    "Settings",
+    "SettingsConfigDict",
+    "program_name",
+    "settings",
+]
 
 
 class _Unset:
@@ -175,3 +183,14 @@ def resolve_settings(model: type[BaseModel]) -> Settings:
         show_config=raw.get("show_config", False),
         strict_unknown=raw.get("strict_unknown", False),
     )
+
+
+def program_name(settings: Settings) -> str:
+    """The name the CLI calls itself in help and error messages.
+
+    Resolved at parse time rather than at class definition: `sys.argv[0]` is a fact
+    about this invocation, not about the schema.
+    """
+    if settings.prog is not None:
+        return settings.prog
+    return Path(sys.argv[0]).name or settings.app_name
