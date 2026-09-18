@@ -868,3 +868,19 @@ The stdlib allowlist in the original text is not implemented separately. The pro
 already accepts every type on it, and a second code path agreeing with the first
 is a liability rather than a safeguard; the types are covered by name in the tests
 instead.
+
+### Clearing a nullable list
+
+An empty value means the empty list on a repeated field, whether it arrives as
+`--tag ""` or `MYAPP_TAGS=`, and that is checked before the nullable rule. So a
+`list[str] | None` field cannot be set to null from the command line or the
+environment; it can only be emptied. Consistency between the two sources is worth
+more than the third state, which applications almost always treat as the empty list
+anyway.
+
+### Where MYAPP_CONFIG_OVERRIDE lands
+
+The milestone list puts `MYAPP_CONFIG_OVERRIDE` in M6, with the environment source.
+It reads a *file* layer that does not exist until M7, so it ships in M7 instead,
+alongside `--config-override`, the path validation and the layer it feeds --
+where it can be tested against something real. M6 is the value-reading source only.

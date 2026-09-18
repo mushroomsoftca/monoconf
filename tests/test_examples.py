@@ -13,12 +13,14 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 ENV = {"COLUMNS": "88"}
 
 
-def run(example: str, *argv: str) -> subprocess.CompletedProcess[str]:
+def run(
+    example: str, *argv: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(EXAMPLES / example), *argv],
         capture_output=True,
         text=True,
-        env=ENV,
+        env=ENV if env is None else env,
         check=False,
     )
 
@@ -42,3 +44,12 @@ def test_minimal_rejects_a_missing_positional() -> None:
     assert result.returncode == 2
     assert "the following arguments are required: INPUT_PATH" in result.stderr
     assert "Try 'minimal.py --help' for usage." in result.stderr
+
+
+def test_minimal_reads_the_environment() -> None:
+    # app_name is inferred: a class named AppConfig in __main__ gives "app", so the
+    # prefix is APP_. That inference is the documented fallback for a script.
+    result = run("minimal.py", "in.csv", env={**ENV, "APP_OUTPUT_DIR": "/srv/out"})
+    assert result.returncode == 0, result.stderr
+    assert "in.csv -> /srv/out" in result.stdout
+    assert "output_dir came from APP_OUTPUT_DIR" in result.stdout

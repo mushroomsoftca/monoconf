@@ -21,7 +21,7 @@ from monoconf.errors import SourceError
 from monoconf.merge import Layer, Origin, Origins, SourceKind, Values, set_leaf
 from monoconf.schema import FieldKind, FieldSpec, Spec
 from monoconf.settings import Settings, program_name
-from monoconf.sources import Context
+from monoconf.sources import Context, scalar_value
 
 __all__ = ["MetaArgs", "MonoconfHelpFormatter", "collect", "parse_meta", "render_help"]
 
@@ -256,9 +256,9 @@ def _value(field: FieldSpec, raw: Any) -> Any:
     if field.repeated:
         # One empty value is how a list is cleared from the command line.
         return [] if raw == [""] else raw
-    if raw == "" and field.nullable:
-        return None
-    return raw
+    if field.kind is FieldKind.BOOL:
+        return raw
+    return scalar_value(field, raw)
 
 
 def _help_text(field: FieldSpec, resolved: Values) -> str:

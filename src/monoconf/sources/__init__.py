@@ -14,7 +14,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-__all__ = ["Context"]
+from monoconf.schema import FieldSpec
+
+__all__ = ["Context", "scalar_value"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,3 +29,13 @@ class Context:
 
     argv: tuple[str, ...]
     env: Mapping[str, str]
+
+
+def scalar_value(field: FieldSpec, raw: str) -> str | None:
+    """Apply the empty-string rule to a string from the CLI or the environment.
+
+    An empty string clears a field whose annotation admits `None`, and is the empty
+    string otherwise: `MYAPP_NAME=` on a `str` field means "", not null. One rule,
+    shared by both sources that hand monoconf strings.
+    """
+    return None if raw == "" and field.nullable else raw

@@ -149,3 +149,17 @@ def test_defaults_that_need_rendering_rather_than_printing() -> None:
     text = caught.value.text
     assert '[""]' in text  # an empty string is not the same as no value
     assert "[true, false]" in text
+
+
+def test_help_shows_a_default_resolved_from_the_environment() -> None:
+    class Served(Config):
+        model_config = settings(app_name="myapp", prog="myapp")
+
+        port: int = 8080
+
+    with pytest.raises(HelpRequested) as caught:
+        Served.resolve(argv=["--help"], env={"MYAPP_PORT": "9090"})
+    # The bracketed value is what omitting the flag would actually give, which is
+    # the whole reason help renders after the lower layers have resolved.
+    assert "[9090]" in caught.value.text
+    assert "[8080]" not in caught.value.text

@@ -26,6 +26,7 @@ from monoconf.merge import Layer, Origin, merge
 from monoconf.schema import Spec, build_spec
 from monoconf.settings import program_name, settings
 from monoconf.sources import Context, cli, defaults
+from monoconf.sources import env as env_source
 
 __all__ = ["Config"]
 
@@ -143,7 +144,7 @@ def _lower_layers(spec: Spec, ctx: Context) -> list[Layer]:
     Files and the environment slot in here as they land; the ordering of the chain
     lives in this one place and nowhere else.
     """
-    return [defaults.collect(spec, ctx)]
+    return [defaults.collect(spec, ctx), env_source.collect(spec, ctx)]
 
 
 def _write(stream: Any, text: str) -> None:
