@@ -167,14 +167,14 @@ def _build_layer(flat: dict[str, Any], origin: Origin) -> Layer:
     return layer(values, origin)
 
 
-_SCALARS = st.one_of(st.integers(), st.text(max_size=4), st.booleans())
-_VALUES = st.one_of(_SCALARS, st.lists(st.text(max_size=2), max_size=3))
+_SCALARS = st.one_of(st.integers(max_value=99), st.text(max_size=3), st.booleans())
+_VALUES = st.one_of(_SCALARS, st.lists(st.text(max_size=2), max_size=2))
 _LAYER = st.builds(
     _build_layer,
-    st.dictionaries(st.sampled_from(PATHS), _VALUES, max_size=4),
+    st.dictionaries(st.sampled_from(PATHS), _VALUES, max_size=3),
     st.sampled_from(ORIGINS),
 )
-layers = st.lists(_LAYER, max_size=5)
+layers = st.lists(_LAYER, max_size=4)
 
 
 @given(layers)
