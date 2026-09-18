@@ -6,6 +6,7 @@ TOML loader. See PLAN.md for the design and its rationale.
 
 from __future__ import annotations
 
+from monoconf.config import Config
 from monoconf.errors import (
     ConfigFileError,
     HelpRequested,
@@ -20,9 +21,13 @@ from monoconf.errors import (
     UnreadableSource,
     ValidationFailed,
 )
+from monoconf.fields import Field
+from monoconf.settings import settings
 
 __all__ = [
+    "Config",
     "ConfigFileError",
+    "Field",
     "HelpRequested",
     "IgnoredValue",
     "MonoconfError",
@@ -34,4 +39,5 @@ __all__ = [
     "UnknownConfigKey",
     "UnreadableSource",
     "ValidationFailed",
+    "settings",
 ]

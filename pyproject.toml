@@ -39,6 +39,12 @@ exclude = ["*.md"]
 [tool.ruff.lint]
 # Ruff defaults (E4, E7, E9, F) plus the sets AGENTS.md names.
 select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF"]
+# RUF012 flags `tags: list[str] = []`, which is the documented way to declare an
+# optional list field. pydantic copies a model's defaults per instance, so the
+# sharing the rule warns about cannot happen here. Ruff exempts classes it can see
+# inherit from BaseModel, but not ones inheriting monoconf.Config -- which is every
+# model in this repository, and in every application using it.
+ignore = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.11"
