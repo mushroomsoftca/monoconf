@@ -14,9 +14,15 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum
 from functools import reduce
 from operator import or_
-from typing import Annotated, Any, Literal, Union, get_args, get_origin
+from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin
 
-from pydantic import BaseModel
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    PydanticUserError,
+    TypeAdapter,
+    ValidationError,
+)
 from pydantic.fields import FieldInfo
 
 from monoconf.errors import SchemaError
@@ -31,6 +37,11 @@ from monoconf.fields import (
 from monoconf.settings import Settings, resolve_settings
 
 __all__ = ["FieldKind", "FieldSpec", "NestedSpec", "Spec", "build_spec"]
+
+# monoconf owns these names whether or not the features behind them are enabled,
+# so turning one on later cannot break a schema that already worked.
+RESERVED_NAMES = frozenset({"help", "config_override", "show_config"})
+RESERVED_FLAGS = frozenset({"--help", "--config-override", "--show-config"})
 
 
 class FieldKind(StrEnum):
@@ -134,17 +145,252 @@ def build_spec(model: type[BaseModel]) -> Spec:
     resolved = resolve_settings(model)
     fields: list[FieldSpec] = []
     nested: list[NestedSpec] = []
-    for spec in _walk(model, model, resolved, ()):
-        if isinstance(spec, NestedSpec):
-            nested.append(spec)
+    for item in _walk(model, model, resolved, ()):
+        if isinstance(item, NestedSpec):
+            nested.append(item)
         else:
-            fields.append(spec)
-    return Spec(
+            fields.append(item)
+    spec = Spec(
         model=model,
         settings=resolved,
         fields=tuple(fields),
         nested=tuple(nested),
     )
+    validate_spec(spec)
+    return spec
+
+
+def validate_spec(spec: Spec) -> None:
+    """Enforce every schema rule, at class-definition time.
+
+    A malformed schema has to fail on import: by `load()` the process is already
+    running, and the operator cannot do anything about a maintainer's mistake.
+    """
+    _check_reserved(spec)
+    _check_collisions(spec)
+    _check_short_flags(spec)
+    _check_requiredness(spec)
+    _check_booleans(spec)
+    _check_nested(spec)
+    _check_string_constructible(spec)
+
+
+def _check_reserved(spec: Spec) -> None:
+    root_table = spec.settings.root_table
+    for f in spec.fields:
+        top_level = f.path == f.name
+        if top_level and f.name in RESERVED_NAMES:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: '{f.name}' is reserved. monoconf "
+                "uses --help, --config-override and --show-config, and reserves all "
+                "three whether or not they are enabled. Rename the field."
+            )
+        if f.flag in RESERVED_FLAGS:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: the flag {f.flag} is reserved by "
+                "monoconf. Rename the field, or give it a different flag with "
+                "Field(flag=...)."
+            )
+        if top_level and root_table is not None and f.name == root_table:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: a top-level field named "
+                f"'{f.name}' cannot be told apart from the root table "
+                f"[{root_table}] that config files may be written under. Rename "
+                "the field, or pass settings(root_table=...) to name the table "
+                "something else."
+            )
+
+
+def _check_collisions(spec: Spec) -> None:
+    flags: dict[str, str] = {}
+    env_names: dict[str, str] = {}
+    for f in spec.fields:
+        if f.flag is not None:
+            first = flags.setdefault(f.flag, f.path)
+            if first != f.path:
+                raise SchemaError(
+                    f"{_where(spec.model, f.path)}: the flag {f.flag} is already "
+                    f"taken by '{first}'. Two fields cannot share a flag; give one "
+                    "of them Field(flag=...) or rename it."
+                )
+        first_env = env_names.setdefault(f.env_name, f.path)
+        if first_env != f.path:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: the environment variable "
+                f"{f.env_name} is already taken by '{first_env}'. Rename one of "
+                "the fields; the variable name is derived from the field path and "
+                "cannot be overridden."
+            )
+
+
+def _check_short_flags(spec: Spec) -> None:
+    shorts: dict[str, str] = {}
+    for f in spec.fields:
+        if f.short is None:
+            continue
+        if len(f.short) != 1 or not f.short.isalnum():
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: short={f.short!r} must be a single "
+                "alphanumeric character."
+            )
+        if f.short == "h":
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: -h is reserved for --help. Choose "
+                "another short flag."
+            )
+        first = shorts.setdefault(f.short, f.path)
+        if first != f.path:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: -{f.short} is already taken by "
+                f"'{first}'. Short flags are never derived, so one of the two was "
+                "asked for by mistake."
+            )
+        if f.required:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: short={f.short!r} is meaningless on "
+                "a field without a default, which is a positional argument. Give "
+                "the field a default, or drop the short flag."
+            )
+
+
+def _check_requiredness(spec: Spec) -> None:
+    for f in spec.fields:
+        if not f.required:
+            continue
+        if "." in f.path:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: every field of a nested model needs "
+                "a default. A required field becomes a positional argument, and "
+                "positionals are flat and ordered, so a nested one has nowhere to "
+                f"go -- and nothing else may set it. Give '{f.name}' a default."
+            )
+        if f.nullable:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: an optional type without a default "
+                "is still required, and becomes a positional argument. Did you mean "
+                f"'{f.name}: {_type_name(f.base_type)} | None = None'?"
+            )
+        if f.kind in (FieldKind.LIST, FieldKind.SET):
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: a required {f.kind.value} cannot be "
+                "a positional argument -- positionals are scalars, one value each. "
+                f"Give '{f.name}' a default and set it with a repeated {f.kind.value} "
+                "flag instead."
+            )
+
+
+def _check_booleans(spec: Spec) -> None:
+    for f in spec.fields:
+        if f.kind is not FieldKind.BOOL:
+            continue
+        if f.name.startswith("no_") or f.name.endswith("_no"):
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: a boolean field must not be named "
+                f"'{f.name}'. monoconf generates the negative flag itself, so this "
+                "would produce something like --no-no-cache. Name the field for "
+                "what it enables."
+            )
+        if f.nullable:
+            raise SchemaError(
+                f"{_where(spec.model, f.path)}: a boolean flag is presence-only, so "
+                "it can express two states and this field has three. Use two "
+                "separate fields, or an enum whose members name the three cases."
+            )
+
+
+def _check_nested(spec: Spec) -> None:
+    # Imported here rather than at module scope: config.py imports this module.
+    from monoconf.config import Config
+
+    for n in spec.nested:
+        if n.required:
+            raise SchemaError(
+                f"{_where(spec.model, n.path)}: a nested model needs a default, "
+                "because it cannot be a positional argument. Write "
+                f"'{n.name}: {n.model.__name__} = {n.model.__name__}()'."
+            )
+        if n.nullable:
+            raise SchemaError(
+                f"{_where(spec.model, n.path)}: a nested model must not be "
+                "nullable. Its fields each get their own flag, and those flags have "
+                f"nowhere to write to when '{n.name}' is None. Drop the '| None'."
+            )
+        if issubclass(n.model, Config):
+            raise SchemaError(
+                f"{_where(spec.model, n.path)}: a nested model must be a plain "
+                f"BaseModel, not a Config. {n.model.__name__} carries CLI and "
+                "settings machinery that means nothing as a child; make it a "
+                "BaseModel."
+            )
+
+
+_PROBE = "monoconf-probe"
+
+
+def _check_string_constructible(spec: Spec) -> None:
+    """Reject a type the CLI and environment could never set.
+
+    Every field is settable from the command line, which hands it a string, so a
+    type that cannot accept one is unusable -- and much better caught on import
+    than on an operator's input.
+    """
+    config = _pydantic_config(spec.model)
+    for f in spec.fields:
+        if _accepts_a_string(f.base_type, config):
+            continue
+        name = _type_name(f.base_type)
+        raise SchemaError(
+            f"{_where(spec.model, f.path)}: type '{name}' cannot be constructed "
+            "from a string, so it cannot be set from the command line or the "
+            f"environment.\n\nEither give {name} a single-string constructor, or "
+            f"annotate the field:\n\n    {f.name}: Annotated[{name}, "
+            f"BeforeValidator({name}.parse)] = ..."
+        )
+
+
+def _accepts_a_string(annotation: Any, config: ConfigDict) -> bool:
+    """Whether pydantic would even look at a string for this type.
+
+    "Does validation raise" is the wrong question: `int` rejects the probe string
+    with int_parsing while being perfectly string-constructible. What distinguishes
+    the two is the error code -- a `*_type` code means the input was of the wrong
+    kind, anything else means the type read the string and disliked this one.
+    """
+    try:
+        adapter = TypeAdapter(annotation, config=config)
+    except PydanticUserError:
+        # A type that carries its own config refuses an outer one, and does not
+        # need the model's: it already built once when the model did.
+        adapter = TypeAdapter(annotation)
+    try:
+        adapter.validate_python(_PROBE)
+    except ValidationError as exc:
+        codes = [error["type"] for error in exc.errors()]
+        return not all(_is_type_mismatch(code) for code in codes)
+    return True
+
+
+_PYDANTIC_CONFIG_KEYS = frozenset(ConfigDict.__annotations__)
+
+
+def _pydantic_config(model: type[BaseModel]) -> ConfigDict:
+    """The model's own pydantic config, without monoconf's keys.
+
+    The probe has to validate under the same config the model does, or a field
+    relying on `arbitrary_types_allowed` or a strictness setting would be judged
+    against different rules than the ones it will actually be validated with.
+    """
+    raw = cast(dict[str, Any], model.model_config)
+    kept = {k: v for k, v in raw.items() if k in _PYDANTIC_CONFIG_KEYS}
+    return cast(ConfigDict, kept)
+
+
+def _is_type_mismatch(code: str) -> bool:
+    return code.endswith("_type") or code == "is_instance_of"
+
+
+def _type_name(annotation: Any) -> str:
+    return getattr(annotation, "__name__", None) or str(annotation)
 
 
 def _walk(

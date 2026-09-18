@@ -841,3 +841,30 @@ like — so warning there produces noise the operator cannot act on. `UnknownCon
 
 `MYAPP_CONFIG_OVERRIDE` is likewise ignored when `settings(config_override=False)`. A
 feature that is off is off.
+
+### Nullable booleans
+
+A boolean flag is presence-only, so it expresses two states; `bool | None = None`
+asks for three. There is no honest flag form, and inventing one (emitting both
+`--color` and `--no-color`) would put a second boolean convention into the CLI. A
+nullable boolean is a definition-time `SchemaError`, pointing at two separate
+fields or an enum whose members name the three cases.
+
+### What "constructible from a single string" means in practice
+
+*Custom types* lists "anything with a `__init__(self, value: str)`" as satisfying
+the contract. On pydantic v2 that is not so: pydantic cannot build a schema for an
+arbitrary class at all, and refuses the model outright unless the type is
+pydantic-aware. The contract is met by a `BeforeValidator`, a
+`__get_pydantic_core_schema__`, an `Enum`, or one of the stdlib types.
+
+`arbitrary_types_allowed=True` does make the model build, but the schema it gets is
+an isinstance check, which no string can satisfy — so the probe rejects it, which
+is the right answer. The probe runs under the model's own pydantic config for
+exactly this reason: a field has to be judged against the rules it will really be
+validated with.
+
+The stdlib allowlist in the original text is not implemented separately. The probe
+already accepts every type on it, and a second code path agreeing with the first
+is a liability rather than a safeguard; the types are covered by name in the tests
+instead.
