@@ -30,7 +30,11 @@ class Database(BaseModel):
 
 
 class App(Config):
-    model_config = settings(app_name="myapp", prog="myapp")
+    # The file layers are off: a real /etc/myapp.toml on the machine running
+    # these tests is not an input to them.
+    model_config = settings(
+        app_name="myapp", prog="myapp", system_config=None, user_config=None
+    )
 
     dataset: str
 
@@ -78,7 +82,9 @@ def test_nesting_uses_a_double_underscore() -> None:
 
 def test_an_empty_prefix_is_honoured() -> None:
     class Unprefixed(Config):
-        model_config = settings(app_name="myapp", env_prefix="")
+        model_config = settings(
+            app_name="myapp", env_prefix="", system_config=None, user_config=None
+        )
 
         port: int = 8080
 
@@ -87,7 +93,9 @@ def test_an_empty_prefix_is_honoured() -> None:
 
 def test_the_environment_can_be_turned_off_entirely() -> None:
     class NoEnv(Config):
-        model_config = settings(app_name="myapp", env_enabled=False)
+        model_config = settings(
+            app_name="myapp", env_enabled=False, system_config=None, user_config=None
+        )
 
         port: int = 8080
 
@@ -195,7 +203,9 @@ def test_a_bad_value_reports_the_variable_it_came_from() -> None:
 
 def test_the_environment_is_an_argument_rather_than_global_state() -> None:
     class Unprefixed(Config):
-        model_config = settings(app_name="myapp", env_prefix="")
+        model_config = settings(
+            app_name="myapp", env_prefix="", system_config=None, user_config=None
+        )
 
         path: str = "unset"
 
@@ -211,7 +221,7 @@ def test_case_matters() -> None:
 
 def test_a_path_field_comes_through_as_a_path() -> None:
     class WithPath(Config):
-        model_config = settings(app_name="myapp")
+        model_config = settings(app_name="myapp", system_config=None, user_config=None)
 
         output_dir: Path = Path("out/")
 

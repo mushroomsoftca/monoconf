@@ -18,7 +18,9 @@ class Database(BaseModel):
 
 
 class App(Config):
-    model_config = settings(app_name="myapp")
+    # The file layers are off: a real /etc/myapp.toml on the machine running
+    # these tests is not an input to them.
+    model_config = settings(app_name="myapp", system_config=None, user_config=None)
 
     dataset: str
 
@@ -55,7 +57,7 @@ def test_mutable_defaults_are_not_shared_between_resolutions() -> None:
 
 def test_a_default_factory_is_evaluated_per_resolution() -> None:
     class Stamped(Config):
-        model_config = settings(app_name="myapp")
+        model_config = settings(app_name="myapp", system_config=None, user_config=None)
 
         started: datetime = pydantic_field(default_factory=datetime.now)
 

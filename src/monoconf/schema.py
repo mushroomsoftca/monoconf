@@ -9,12 +9,21 @@ module.
 from __future__ import annotations
 
 import types
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from functools import reduce
 from operator import or_
-from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    TypeAlias,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+)
 
 from pydantic import (
     BaseModel,
@@ -36,7 +45,7 @@ from monoconf.fields import (
 )
 from monoconf.settings import Settings, resolve_settings
 
-__all__ = ["FieldKind", "FieldSpec", "NestedSpec", "Spec", "build_spec"]
+__all__ = ["FieldKind", "FieldSpec", "KeyTree", "NestedSpec", "Spec", "build_spec"]
 
 # monoconf owns these names whether or not the features behind them are enabled,
 # so turning one on later cannot break a schema that already worked.
@@ -116,6 +125,10 @@ class NestedSpec:
     nullable: bool
 
 
+KeyTree: TypeAlias = dict[str, "FieldSpec | KeyTree"]
+"""Every name the schema knows, nested the way a config file's tables are."""
+
+
 @dataclass(frozen=True, slots=True)
 class Spec:
     """Everything monoconf knows about a schema, derived once at import."""
@@ -137,6 +150,37 @@ class Spec:
 
     def by_path(self) -> dict[str, FieldSpec]:
         return {f.path: f for f in self.fields}
+
+    def tree(self) -> KeyTree:
+        """The schema's names, shaped the way a config file's tables are.
+
+        A file is read against this rather than against a flat list of paths:
+        at every level the reader has to know which names exist, which of them
+        are tables to descend into, and -- for a name matching none of them --
+        what the operator might have meant instead.
+        """
+        tree: KeyTree = {}
+        # Models first, so a nested model with no fields of its own is still a
+        # table the reader recognises rather than an unknown key.
+        for nested in self.nested:
+            _descend(tree, nested.path.split("."))
+        for field in self.fields:
+            *branch, leaf = field.path.split(".")
+            _descend(tree, branch)[leaf] = field
+        return tree
+
+
+def _descend(tree: KeyTree, parts: Sequence[str]) -> KeyTree:
+    """Walk to a branch of a key tree, creating the levels it needs.
+
+    Every level is a table: a name is either a leaf or a model and never both,
+    which the definition-time checks guarantee.
+    """
+    for part in parts:
+        branch = tree.setdefault(part, {})
+        assert isinstance(branch, dict)
+        tree = branch
+    return tree
 
 
 def build_spec(model: type[BaseModel]) -> Spec:

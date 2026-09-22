@@ -12,7 +12,11 @@ from monoconf.schema import Spec
 
 
 class Minimal(Config):
-    model_config = settings(app_name="myapp", prog="myapp")
+    # The file layers are off: a real /etc/myapp.toml on the machine running
+    # these tests is not an input to them.
+    model_config = settings(
+        app_name="myapp", prog="myapp", system_config=None, user_config=None
+    )
 
     input_path: Path
     port: int = 8080
@@ -71,7 +75,9 @@ def test_load_reports_a_bad_value_with_its_origin(
 
 def test_a_whole_model_validator_failure_has_no_single_origin() -> None:
     class Paired(Config):
-        model_config = settings(app_name="myapp", prog="myapp")
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=None, user_config=None
+        )
 
         low: int = 1
         high: int = 10

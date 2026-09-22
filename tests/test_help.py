@@ -31,10 +31,14 @@ class Database(BaseModel):
 class App(Config):
     """Serve the widget index."""
 
+    # The file layers are off: a real /etc/myapp.toml on the machine running
+    # these tests is not an input to them.
     model_config = settings(
         app_name="myapp",
         prog="myapp",
         epilog="See https://example.com/docs for the full config reference.",
+        system_config=None,
+        user_config=None,
     )
 
     input_path: Path
@@ -118,7 +122,9 @@ def test_short_flags_appear_with_their_long_form() -> None:
 
 def test_help_is_readable_with_no_metadata_at_all() -> None:
     class Bare(Config):
-        model_config = settings(app_name="bare", prog="bare")
+        model_config = settings(
+            app_name="bare", prog="bare", system_config=None, user_config=None
+        )
 
         source: Path
         limit: int = 10
@@ -139,7 +145,9 @@ def test_width_does_not_depend_on_the_terminal() -> None:
 
 def test_defaults_that_need_rendering_rather_than_printing() -> None:
     class Rendered(Config):
-        model_config = settings(app_name="myapp", prog="myapp")
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=None, user_config=None
+        )
 
         suffix: str = ""
         flags: list[bool] = [True, False]
@@ -153,7 +161,9 @@ def test_defaults_that_need_rendering_rather_than_printing() -> None:
 
 def test_help_shows_a_default_resolved_from_the_environment() -> None:
     class Served(Config):
-        model_config = settings(app_name="myapp", prog="myapp")
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=None, user_config=None
+        )
 
         port: int = 8080
 

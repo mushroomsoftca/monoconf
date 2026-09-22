@@ -36,7 +36,11 @@ class Database(BaseModel):
 class App(Config):
     """Serve the widget index."""
 
-    model_config = settings(app_name="myapp", prog="myapp")
+    # The file layers are off: a real /etc/myapp.toml on the machine running
+    # these tests is not an input to them.
+    model_config = settings(
+        app_name="myapp", prog="myapp", system_config=None, user_config=None
+    )
 
     input_path: Path
     dataset: str
@@ -127,7 +131,9 @@ def test_repeated_flags_build_a_list() -> None:
 
 def test_a_repeated_flag_replaces_the_default_rather_than_appending() -> None:
     class WithDefaults(Config):
-        model_config = settings(app_name="myapp", prog="myapp")
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=None, user_config=None
+        )
 
         tags: list[str] = ["base"]
 
