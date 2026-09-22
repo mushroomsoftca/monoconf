@@ -16,20 +16,14 @@ from datetime import date, time
 from enum import Enum
 from typing import Any
 
-import pydantic
-from pydantic import SecretBytes, SecretStr
+from pydantic import Secret, SecretBytes, SecretStr
 
 from monoconf.merge import Origin
 from monoconf.schema import Spec
 
 __all__ = ["dump"]
 
-# pydantic.Secret is newer than the pydantic>=2.0 floor, so it is looked up.
-_SECRETS: tuple[type, ...] = tuple(
-    kind
-    for kind in (SecretStr, SecretBytes, getattr(pydantic, "Secret", None))
-    if isinstance(kind, type)
-)
+_SECRETS: tuple[type, ...] = (Secret, SecretStr, SecretBytes)
 
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
