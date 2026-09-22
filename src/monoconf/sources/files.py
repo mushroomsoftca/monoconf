@@ -14,6 +14,7 @@ correctly a type error rather than a number that got away with it.
 from __future__ import annotations
 
 import difflib
+import sys
 import tomllib
 import warnings
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -61,8 +62,17 @@ def collect(spec: Spec, ctx: Context) -> Layer:
     """Collect every configuration file, lowest priority first."""
     settings = spec.settings
     tree = spec.tree()
-    system = _sites(settings.system_config, dropins=settings.dropins)
-    user = _sites(settings.user_config, dropins=settings.dropins)
+    app = settings.app_name
+    system = _sites(
+        settings.system_config,
+        _system_paths(app, ctx.env),
+        dropins=settings.dropins,
+    )
+    user = _sites(
+        settings.user_config,
+        _user_paths(app, ctx.env),
+        dropins=settings.dropins,
+    )
     # Every system file, then every system drop-in: a .d/ sits above all of the
     # files at its own level, not immediately above its own.
     return merge(
@@ -75,15 +85,72 @@ def collect(spec: Spec, ctx: Context) -> Layer:
     )
 
 
-def _sites(paths: ConfigPaths, *, dropins: bool) -> tuple[_Site, ...]:
-    """The files one layer covers, in ascending priority order."""
-    if isinstance(paths, tuple):
-        return tuple(
-            _Site(path, path.with_suffix(".d") if dropins else None) for path in paths
-        )
-    # None switches the layer off. UNSET means "work it out from the platform",
-    # which is M7b; until then there is nothing to work it out from.
-    return ()
+def _sites(
+    paths: ConfigPaths, derived: tuple[Path, ...], *, dropins: bool
+) -> tuple[_Site, ...]:
+    """The files one layer covers, in ascending priority order.
+
+    A layer is either pinned to explicit paths, switched off, or left to the
+    platform. Pinning is also what makes a test hermetic, which is why it is part
+    of the public `settings()` surface rather than a hook.
+    """
+    if paths is None:
+        return ()
+    chosen = paths if isinstance(paths, tuple) else derived
+    # The drop-in directory is the file's own name with .toml swapped for .d:
+    # /etc/myapp.toml -> /etc/myapp.d, %APPDATA%\myapp\config.toml -> config.d.
+    return tuple(
+        _Site(path, path.with_suffix(".d") if dropins else None) for path in chosen
+    )
+
+
+def _system_paths(app: str, env: Mapping[str, str]) -> tuple[Path, ...]:
+    """Where this platform keeps system-wide configuration, lowest priority first.
+
+    Every input is read from the environment monoconf was handed rather than from
+    the process's own, so `resolve(env=...)` decides what discovery can see.
+    """
+    if sys.platform == "win32":
+        return _windows_path(env, "PROGRAMDATA", app)
+    # XDG gives earlier entries the higher precedence, and the chain folds lowest
+    # first, so the list is walked backwards. /etc comes after all of them: a
+    # distribution's default in /etc/xdg has to stay overridable locally.
+    return (
+        *(Path(directory) / f"{app}.toml" for directory in reversed(_xdg_dirs(env))),
+        Path("/etc") / f"{app}.toml",
+    )
+
+
+def _user_paths(app: str, env: Mapping[str, str]) -> tuple[Path, ...]:
+    """Where this platform keeps one person's configuration."""
+    if sys.platform == "win32":
+        return _windows_path(env, "APPDATA", app)
+    home = Path(env.get("XDG_CONFIG_HOME", ""))
+    if home.is_absolute():
+        return (home / f"{app}.toml",)
+    # Unset, empty, or relative -- and a relative XDG_CONFIG_HOME is ignored, as
+    # the spec requires: a configuration path that moves with the working
+    # directory is not a configuration path.
+    base = Path(env.get("HOME", ""))
+    if not base.is_absolute():
+        # Nothing to anchor a user path to. No layer beats a guessed one.
+        return ()
+    return (base / ".config" / f"{app}.toml",)
+
+
+def _xdg_dirs(env: Mapping[str, str]) -> tuple[str, ...]:
+    raw = env.get("XDG_CONFIG_DIRS", "")
+    if not raw:
+        # Unset or empty means /etc/xdg, which is the spec's own default.
+        return ("/etc/xdg",)
+    return tuple(entry for entry in raw.split(":") if Path(entry).is_absolute())
+
+
+def _windows_path(env: Mapping[str, str], variable: str, app: str) -> tuple[Path, ...]:
+    base = Path(env.get(variable, ""))
+    if not base.is_absolute():
+        return ()
+    return (base / app / "config.toml",)
 
 
 def _paths(sites: Iterable[_Site]) -> Iterator[Path]:
