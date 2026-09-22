@@ -33,3 +33,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --all-extras --frozen
       - run: uv run pytest --cov=monoconf --cov-report=term-missing
+
+  # pyproject.toml promises pydantic>=2.8; this is the job that keeps the promise.
+  pydantic-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - run: uv sync --all-extras --frozen
+      - run: uv pip install "pydantic==2.8.*"
+      - run: uv run --no-sync pytest

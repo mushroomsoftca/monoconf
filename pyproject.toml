@@ -1,11 +1,16 @@
 [project]
 name = "monoconf"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "One pydantic model, one CLI, one env reader, one layered TOML loader, one precedence order."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-dependencies = ["pydantic>=2.0"]
+# 2.8 is the oldest release the whole suite passes on; CI's pydantic-floor job
+# holds it there. Before it, pydantic mishandles a builtin such as str.strip used
+# as a BeforeValidator, which breaks monoconf's definition-time type probe.
+dependencies = ["pydantic>=2.8"]
+keywords = ["configuration", "config", "cli", "argparse", "toml", "environment", "pydantic"]
+authors = [{ name = "monoconf contributors" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -16,6 +21,11 @@ classifiers = [
   "Topic :: Software Development :: Libraries",
   "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mushroomsoftca/monoconf"
+Repository = "https://github.com/mushroomsoftca/monoconf"
+Issues = "https://github.com/mushroomsoftca/monoconf/issues"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "mypy", "ruff", "hypothesis"]

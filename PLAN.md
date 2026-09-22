@@ -21,7 +21,7 @@ These are load-bearing. Do not add options that soften them.
 
 ### Dependencies
 
-- `pydantic>=2` — the only runtime dependency.
+- `pydantic>=2.8` — the only runtime dependency.
 - `tomllib` (stdlib, 3.11+), `argparse`, `os`, `pathlib`, `sys`.
 
 Explicitly **not** using `pydantic-settings`. Its value is env parsing plus a source-ordering hook; monoconf overrides source order, the CLI model, file discovery and merge semantics, so almost nothing of it would remain. The env source is roughly 60 lines written directly.
@@ -569,7 +569,7 @@ Uniform signature means the resolver is a short loop over an ordered tuple of co
 [project]
 name = "monoconf"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.0"]
+dependencies = ["pydantic>=2.8"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "mypy", "ruff"]
@@ -1023,3 +1023,27 @@ is a fixture, and the dev dependency would outweigh it.
 The `--help` snapshot uses a model without short flags, because argparse 3.13 renders
 an option with both forms differently from 3.11 and 3.12; `test_help.py` still covers
 short flags by fragment.
+
+2026-09-22
+
+M9 settled three things about the release itself.
+
+### The pydantic floor is 2.8
+
+The dependency said `pydantic>=2.0`, which nothing tested. Against each minor release,
+monoconf's own code runs from 2.0, but the suite first passes whole at 2.8: before it,
+pydantic hands a builtin such as `str.strip`, used as a `BeforeValidator`, an argument it
+cannot take, and the definition-time probe of that field fails with a `TypeError`
+instead of a verdict. A floor the suite does not pass on is not a floor, so it is 2.8,
+and a CI job pinned to 2.8 keeps it honest.
+
+### Three examples
+
+`examples/full.py` exercises every `settings()` key and absorbs M8's
+`examples/show_config.py`, leaving the three examples *Package layout* names.
+
+### Publishing is by hand
+
+0.1.0 is built and checked in the repository (`uv build`, `twine check`) and uploaded to
+TestPyPI by a maintainer. There is no release workflow, and so no publishing credential
+anywhere near CI; that can change when there is a second release to automate.
