@@ -97,12 +97,16 @@ class Config(BaseModel):
         sequence or mapping means exactly that, not a default.
         """
         spec = cls.__monoconf_spec__
+        command_line = tuple(sys.argv[1:] if argv is None else argv)
+        # Pass one, before anything can complain about a missing positional, and
+        # before the file layer can be collected: it is what says which files
+        # there are.
+        meta = cli.parse_meta(spec, command_line)
         ctx = Context(
-            argv=tuple(sys.argv[1:] if argv is None else argv),
+            argv=command_line,
             env=os.environ if env is None else env,
+            overrides=meta.config_override,
         )
-        # Pass one, before anything can complain about a missing positional.
-        meta = cli.parse_meta(spec, ctx.argv)
 
         lower_values, lower_origins = merge(_lower_layers(spec, ctx))
         if meta.help_requested:

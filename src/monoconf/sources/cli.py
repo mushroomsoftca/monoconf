@@ -41,6 +41,7 @@ class _Unset:
 _SENTINEL: Final = _Unset()
 
 _HELP_DEST = "_monoconf_help"
+_OVERRIDE_DEST = "_monoconf_config_override"
 _USED_DEST = "_monoconf_used"
 
 # Help output is part of the product: a maintainer's README capture must not depend
@@ -53,6 +54,7 @@ class MetaArgs:
     """What pass one found."""
 
     help_requested: bool = False
+    config_override: tuple[str, ...] = ()
 
 
 class _Parser(argparse.ArgumentParser):
@@ -152,7 +154,10 @@ def parse_meta(spec: Spec, argv: Sequence[str]) -> MetaArgs:
     """
     parser = _meta_parser(spec.settings)
     namespace, _unknown = parser.parse_known_args(list(argv))
-    return MetaArgs(help_requested=bool(getattr(namespace, _HELP_DEST)))
+    return MetaArgs(
+        help_requested=bool(getattr(namespace, _HELP_DEST)),
+        config_override=tuple(getattr(namespace, _OVERRIDE_DEST, None) or ()),
+    )
 
 
 def collect(spec: Spec, ctx: Context) -> Layer:
@@ -201,6 +206,7 @@ def build_parser(spec: Spec, resolved: Values) -> argparse.ArgumentParser:
         dest=_HELP_DEST,
         help="show this help message and exit",
     )
+    _add_override(parser, settings)
     for field in spec.positionals:
         parser.add_argument(
             dest_for(field.path),
@@ -225,7 +231,30 @@ def dest_for(path: str) -> str:
 def _meta_parser(settings: Settings) -> _Parser:
     parser = _Parser(prog=program_name(settings), add_help=False, allow_abbrev=False)
     parser.add_argument("-h", "--help", action="store_true", dest=_HELP_DEST)
+    _add_override(parser, settings)
     return parser
+
+
+def _add_override(parser: argparse.ArgumentParser, settings: Settings) -> None:
+    """Declare `--config-override`, in both passes.
+
+    Pass one needs it because it decides which files exist; pass two needs it
+    because an argument the full parser has never heard of is an error, and
+    because this is where help output comes from.
+    """
+    if not settings.config_override:
+        return
+    parser.add_argument(
+        "--config-override",
+        action="append",
+        dest=_OVERRIDE_DEST,
+        default=[],
+        metavar="PATH",
+        help=(
+            "Read this file as well, above every discovered file and below the "
+            "environment. Repeatable; the last one wins."
+        ),
+    )
 
 
 def _add_option(

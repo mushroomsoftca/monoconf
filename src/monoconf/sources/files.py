@@ -14,6 +14,7 @@ correctly a type error rather than a number that got away with it.
 from __future__ import annotations
 
 import difflib
+import os
 import sys
 import tomllib
 import warnings
@@ -38,7 +39,7 @@ from monoconf.merge import (
     set_leaf,
 )
 from monoconf.schema import KeyTree, Spec
-from monoconf.settings import ConfigPaths
+from monoconf.settings import ConfigPaths, Settings
 from monoconf.sources import Context
 
 __all__ = ["collect"]
@@ -73,6 +74,7 @@ def collect(spec: Spec, ctx: Context) -> Layer:
         _user_paths(app, ctx.env),
         dropins=settings.dropins,
     )
+    overrides, named = _overrides(settings, ctx)
     # Every system file, then every system drop-in: a .d/ sits above all of the
     # files at its own level, not immediately above its own.
     return merge(
@@ -81,6 +83,7 @@ def collect(spec: Spec, ctx: Context) -> Layer:
             *_read_all(spec, tree, _dropins(system), SourceKind.SYSTEM_DROPIN),
             *_read_all(spec, tree, _paths(user), SourceKind.USER_FILE),
             *_read_all(spec, tree, _dropins(user), SourceKind.USER_DROPIN),
+            *_read_all(spec, tree, overrides, SourceKind.OVERRIDE_FILE, named=named),
         ]
     )
 
@@ -102,6 +105,29 @@ def _sites(
     return tuple(
         _Site(path, path.with_suffix(".d") if dropins else None) for path in chosen
     )
+
+
+def _overrides(settings: Settings, ctx: Context) -> tuple[tuple[Path, ...], str | None]:
+    """Layer 6: the files named explicitly, in the order they were named.
+
+    The flag replaces the variable rather than stacking on it. A list of files
+    is a value like any other, and a value from the command line beats one from
+    the environment whole -- monoconf appends to nothing, anywhere.
+    """
+    if not settings.config_override:
+        # A feature that is switched off is switched off, variable included.
+        return (), None
+    if ctx.overrides:
+        return tuple(Path(entry) for entry in ctx.overrides), "--config-override"
+    if not settings.env_enabled:
+        return (), None
+    variable = f"{settings.env_prefix}CONFIG_OVERRIDE"
+    # The one place an environment variable feeds a file layer rather than a
+    # value, so it is split the way a path list is: ':' here, ';' on Windows.
+    entries = [entry for entry in ctx.env.get(variable, "").split(os.pathsep) if entry]
+    if not entries:
+        return (), None
+    return tuple(Path(entry) for entry in entries), variable
 
 
 def _system_paths(app: str, env: Mapping[str, str]) -> tuple[Path, ...]:
@@ -189,25 +215,62 @@ def _entries(directory: Path) -> list[Path]:
 
 
 def _read_all(
-    spec: Spec, tree: KeyTree, paths: Iterable[Path], kind: SourceKind
+    spec: Spec,
+    tree: KeyTree,
+    paths: Iterable[Path],
+    kind: SourceKind,
+    *,
+    named: str | None = None,
 ) -> list[Layer]:
     layers = []
     for path in paths:
-        layer = _read(spec, tree, path, kind)
+        layer = _read(spec, tree, path, kind, named=named)
         if layer is not None:
             layers.append(layer)
     return layers
 
 
-def _read(spec: Spec, tree: KeyTree, path: Path, kind: SourceKind) -> Layer | None:
+def _read(
+    spec: Spec,
+    tree: KeyTree,
+    path: Path,
+    kind: SourceKind,
+    *,
+    named: str | None = None,
+) -> Layer | None:
+    """Read one file. `named` means the operator asked for this one by name.
+
+    A discovered file that is missing or unreadable is an ordinary fact about a
+    machine. A file someone typed is a promise: if it is not there, the
+    configuration they asked for is not the one they would get, and falling back
+    to the discovered files would hide a typo behind a working program.
+    """
+    if named is not None and path.is_dir():
+        # Checked rather than left to open(), which raises IsADirectoryError on
+        # POSIX and PermissionError on Windows.
+        raise ConfigFileError(
+            f"{path} is a directory, and {named} names files. Name the files "
+            "themselves, or let your shell expand the directory."
+        )
     try:
         with path.open("rb") as handle:
             document = tomllib.load(handle, parse_float=float)
     except FileNotFoundError:
+        if named is not None:
+            raise ConfigFileError(
+                f"{path}: no such file. It was named by {named}, and a file named "
+                "explicitly has to exist -- a typo must not quietly leave you with "
+                "the discovered configuration instead."
+            ) from None
         # Most of the chain is absent most of the time, which is the point of
         # having eight layers rather than one.
         return None
     except OSError as error:
+        if named is not None:
+            raise ConfigFileError(
+                f"{path}: {error.strerror}. It was named by {named}, so it is an "
+                "error rather than something to work around."
+            ) from error
         warnings.warn(
             f"{path} exists but cannot be read ({error.strerror}), so it is "
             "ignored. Everything else still applies.",

@@ -30,6 +30,14 @@ class Context:
     argv: tuple[str, ...]
     env: Mapping[str, str]
 
+    overrides: tuple[str, ...] = ()
+    """Files named by `--config-override`, as the operator typed them.
+
+    Pass one of the command line finds these, and the file source reads them:
+    they change which files exist before anything else can be resolved. It is
+    the resolver that hands them over, so no source is reading another's output.
+    """
+
 
 def scalar_value(field: FieldSpec, raw: str) -> str | None:
     """Apply the empty-string rule to a string from the CLI or the environment.
