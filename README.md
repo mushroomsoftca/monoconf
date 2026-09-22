@@ -27,10 +27,10 @@ cfg = AppConfig.load()
 [PLAN.md](PLAN.md), which is the design authority: what monoconf does and why it
 does it that way. [AGENTS.md](AGENTS.md) covers how to work on the repository.
 
-M1–M6 have landed: schema introspection, the definition-time checks, the merge
-core, the first end-to-end path, and the environment source. `load()` and
-`resolve()` work against the command line, the environment and the schema's
-defaults, with `--help` and provenance for every value. Config files arrive in
-M7, so the precedence chain is three layers long today rather than eight. The
-README proper, with the precedence table and the full rationale, arrives with
-M9.
+M1–M7 have landed, and the precedence chain is complete: schema defaults, system
+files and their drop-ins, user files and theirs, `--config-override`, the
+environment, and the command line. `load()` and `resolve()` resolve all eight
+layers, `--help` shows the default each flag would actually fall back to on the
+machine it is running on, and every resolved value knows which file, variable or
+flag it came from. Error rendering and `--show-config` arrive in M8; the README
+proper, with the precedence table and the full rationale, arrives with M9.
