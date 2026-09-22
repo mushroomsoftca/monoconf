@@ -7,14 +7,17 @@ resolution. `load()` turns the resolution errors into a stderr message plus
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-if TYPE_CHECKING:  # merge.py imports this module, so the import cannot be real
+if TYPE_CHECKING:  # merge.py and schema.py import this module, so these cannot be
     from collections.abc import Mapping
 
+    from pydantic_core import ErrorDetails
+
     from monoconf.merge import Origin
+    from monoconf.schema import FieldSpec, Spec
 
 __all__ = [
     "ConfigFileError",
@@ -98,6 +101,7 @@ class UnreadableSource(MonoconfWarning):
 
 def render_validation_error(
     prog: str,
+    spec: Spec,
     origins: Mapping[str, Origin],
     error: ValidationError,
 ) -> str:
@@ -109,15 +113,136 @@ def render_validation_error(
     """
     # No "try --help" line here: that is advice for someone at a command line, and
     # load() is the only caller that knows it is talking to one.
+    fields = spec.by_path()
     lines = [f"{prog}: invalid configuration", ""]
     for detail in error.errors():
-        path = ".".join(str(part) for part in detail["loc"])
-        lines.append(f"  {path or '(root)'}: {detail['msg']}")
-        origin = origins.get(path)
-        if origin is None:
-            # Nothing set it, which is what a missing required field looks like.
-            lines.append("    no value from any source")
-        else:
-            lines.append(f"    value {detail['input']!r} from {origin.describe()}")
+        loc = tuple(detail["loc"])
+        field_path, shown = _locate(loc, fields)
+        lines.append(
+            f"  {shown or '(root)'}: {_problem(detail, fields.get(field_path))}"
+        )
+        lines.append(f"    {_provenance(detail, loc, origins, shown)}")
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def _locate(
+    loc: tuple[int | str, ...], fields: Mapping[str, FieldSpec]
+) -> tuple[str, str]:
+    """The field an error belongs to, and the path to show the operator.
+
+    Past a leaf field, pydantic's location carries segments of its own -- the
+    member of a union it tried, a validator's name -- which mean nothing to the
+    person who wrote the file. List indices are kept, as `tags[1]`.
+    """
+    parts: list[str] = []
+    shown = ""
+    for part in loc:
+        field_path = ".".join(parts)
+        if isinstance(part, int):
+            shown += f"[{part}]"
+            continue
+        if field_path in fields:
+            continue
+        parts.append(part)
+        shown = f"{shown}.{part}" if shown else part
+    return ".".join(parts), shown
+
+
+# Pydantic's error types, as the operator would say them. The value itself is
+# named in front of each: "'nine thousand' is not a valid integer".
+_PROBLEMS: dict[str, str] = {
+    "int_parsing": "is not a valid integer",
+    "int_type": "is not a valid integer",
+    "int_from_float": "is not a whole number",
+    "float_parsing": "is not a valid number",
+    "float_type": "is not a valid number",
+    "decimal_parsing": "is not a valid decimal number",
+    "decimal_type": "is not a valid decimal number",
+    "bool_parsing": "is not a valid boolean; use true or false",
+    "bool_type": "is not a valid boolean; use true or false",
+    "string_type": "is not a string; in a config file, quote it",
+    "list_type": "is not a list; in a config file, write it as an array",
+    "set_type": "is not a list; in a config file, write it as an array",
+    "model_type": "is not a table of settings",
+    "model_attributes_type": "is not a table of settings",
+    "dict_type": "is not a table of settings",
+    "uuid_parsing": "is not a valid UUID",
+    "uuid_type": "is not a valid UUID",
+    "date_parsing": "is not a valid date; use YYYY-MM-DD",
+    "date_from_datetime_parsing": "is not a valid date; use YYYY-MM-DD",
+    "date_type": "is not a valid date; use YYYY-MM-DD",
+    "datetime_parsing": "is not a valid date and time; use YYYY-MM-DDTHH:MM:SS",
+    "datetime_from_date_parsing": (
+        "is not a valid date and time; use YYYY-MM-DDTHH:MM:SS"
+    ),
+    "datetime_type": "is not a valid date and time; use YYYY-MM-DDTHH:MM:SS",
+    "time_parsing": "is not a valid time; use HH:MM:SS",
+    "time_type": "is not a valid time; use HH:MM:SS",
+    "time_delta_parsing": "is not a valid duration",
+    "time_delta_type": "is not a valid duration",
+    "url_parsing": "is not a valid URL",
+    "url_type": "is not a valid URL",
+}
+
+_CHOICE_ERRORS = frozenset({"enum", "literal_error"})
+
+# How much of a value to quote back. A whole table dumped into one line of an
+# error message hides the message.
+_MAX_SHOWN = 60
+
+
+def _problem(detail: ErrorDetails, field: FieldSpec | None) -> str:
+    kind = detail["type"]
+    message = detail["msg"]
+    if kind == "missing":
+        return "is required"
+    validator = kind in ("value_error", "assertion_error")
+    if validator:
+        # A validator's own words, without pydantic's "Value error, " label.
+        _, _, message = message.partition(", ")
+        if field is None:
+            # A model-level check: the input is a whole table, and quoting it
+            # back would bury the reason.
+            return message
+    shown = _shown(detail["input"])
+    if kind in _CHOICE_ERRORS:
+        choices = None if field is None else field.choices
+        if choices is None:
+            return f"{shown} is not one of {detail.get('ctx', {}).get('expected')}"
+        return f"{shown} is not one of: {', '.join(choices)}"
+    if kind in _PROBLEMS:
+        return f"{shown} {_PROBLEMS[kind]}"
+    if validator:
+        return f"{shown} was rejected: {message}"
+    head, found, rest = message.partition("Input should be ")
+    if found and not head:
+        return f"{shown} should be {rest}"
+    return f"{shown} was rejected: {message[:1].lower()}{message[1:]}"
+
+
+def _shown(value: Any) -> str:
+    text = repr(value)
+    return text if len(text) <= _MAX_SHOWN else f"{text[: _MAX_SHOWN - 3]}..."
+
+
+def _provenance(
+    detail: ErrorDetails,
+    loc: tuple[int | str, ...],
+    origins: Mapping[str, Origin],
+    shown: str,
+) -> str:
+    """Where the offending value came from: the longest located prefix's origin.
+
+    A list is a value one layer set whole, so an error at `tags.1` came from
+    wherever `tags` did.
+    """
+    parts = [str(part) for part in loc]
+    for end in range(len(parts), 0, -1):
+        origin = origins.get(".".join(parts[:end]))
+        if origin is not None:
+            return f"from {origin.describe()}"
+    if detail["type"] == "missing":
+        return "no value from any source"
+    subject = f"'{shown}'" if shown else "the configuration"
+    return f"from a check on {subject} as a whole"

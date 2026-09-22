@@ -93,5 +93,5 @@ def test_a_whole_model_validator_failure_has_no_single_origin() -> None:
     message = str(caught.value)
     # The failure belongs to the model, not to one field, so there is no origin to
     # name -- and saying so beats naming the wrong one.
-    assert "(root): Value error, low must not exceed high" in message
-    assert "no value from any source" in message
+    assert "(root): low must not exceed high" in message
+    assert "from a check on the configuration as a whole" in message

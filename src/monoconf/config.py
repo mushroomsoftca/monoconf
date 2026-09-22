@@ -78,7 +78,13 @@ class Config(BaseModel):
             raise SystemExit(requested.exit_code) from None
         except MonoconfError as error:
             prog = program_name(cls.__monoconf_spec__.settings)
-            _write(sys.stderr, f"{prog}: {error}\nTry '{prog} --help' for usage.")
+            hint = f"Try '{prog} --help' for usage."
+            if isinstance(error, ValidationFailed):
+                # Already a titled block naming the program; it gets a blank line
+                # before the hint rather than a second "myapp:" in front of it.
+                _write(sys.stderr, f"{error}\n\n{hint}")
+            else:
+                _write(sys.stderr, f"{prog}: {error}\n{hint}")
             raise SystemExit(2) from None
 
     @classmethod
@@ -118,7 +124,7 @@ class Config(BaseModel):
         except ValidationError as error:
             prog = program_name(spec.settings)
             raise ValidationFailed(
-                render_validation_error(prog, origins, error)
+                render_validation_error(prog, spec, origins, error)
             ) from error
         # The instance is frozen, and origins are not a field: this is the one way
         # to attach them, and it leaves model_dump, equality and repr untouched.
