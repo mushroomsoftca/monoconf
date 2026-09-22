@@ -1,8 +1,30 @@
 # AGENTS.md
 
-Instructions for coding agents working in this repository. `PLAN.md` is the design
-document and the authority on *what* monoconf does; this file covers *how* to work
-on it.
+Instructions for coding agents working in this repository. Read this file first:
+it is written to be enough on its own for most tasks. `PLAN.md` is the design
+authority on *what* monoconf does; this file covers *how* to work on it, and where
+in PLAN.md to look.
+
+## Status
+
+- **0.1.0 is complete** on `main`. Milestones M1–M9 have all landed; `git log` has
+  the history, and `CHANGELOG.md` has the user-visible summary.
+- **Not yet published.** Uploading to TestPyPI is done by hand, by the
+  maintainer. See PLAN.md, amendment *Publishing is by hand*.
+- **What's next** is the maintainer's call. PLAN.md § Deferred names the two
+  candidates, per-field `cli=False` and list-append semantics, and both need a
+  design decision from the maintainer before any code. Nothing is in flight.
+
+## How to use PLAN.md
+
+It is about 1,050 lines. Don't read it whole.
+
+- The top of the file has a table mapping each body section to the dated
+  **Amendments** that override it. Check that table before relying on a body
+  section.
+- `grep -n '^##' PLAN.md` lists the sections; read only the one you need.
+- A new design decision gets a new dated amendment at the end, and a row in that
+  table. Don't bury a decision in code or in a commit message.
 
 ## What this project is
 
@@ -12,6 +34,35 @@ file loader, resolved through one fixed precedence order.
 
 It is a **library**, not an application. No entry points, no `[project.scripts]`,
 no CLI of its own.
+
+## How it fits together
+
+`Config.resolve()` (`config.py`) does the following:
+
+1. Parse the command line, pass one: `--help`, `--config-override`,
+   `--show-config`.
+2. Collect every source as sparse `(values, origins)`: defaults, files, env, CLI.
+3. `merge()` the sources, lowest priority first.
+4. Validate once.
+5. Attach the origins to the result.
+
+`load()` wraps `resolve()`: it prints output or errors, and exits.
+
+| Module | Responsibility |
+| --- | --- |
+| `config.py` | `Config`, `load`/`resolve`, the resolver's layer order, the `--show-config` model with positionals made optional |
+| `settings.py` | `settings()`, `Settings`, `program_name()` |
+| `fields.py` | `Field()`, flag, env, metavar and singular derivation |
+| `schema.py` | `Spec`/`FieldSpec`, introspection, every definition-time `SchemaError` (pure) |
+| `merge.py` | `merge`, `Origin`, `SourceKind`, `leaves`/`set_leaf` (pure) |
+| `errors.py` | exceptions, warnings, `render_validation_error` |
+| `toml.py` | `dump()`, the `--show-config` TOML emitter (pure) |
+| `sources/defaults.py`, `files.py`, `env.py`, `cli.py` | one `collect(spec, ctx)` each. `cli.py` also has both parser passes and `render_help` |
+
+Each of the three snapshotted outputs is rendered in one place: `--help` in
+`cli.render_help`, validation errors in `errors.render_validation_error`, and
+`--show-config` in `toml.dump`. Other error messages are written where they are
+raised.
 
 ## Commands
 
@@ -23,7 +74,11 @@ uv run pytest --cov=monoconf --cov-report=term-missing
 uv run ruff check --fix .     # lint
 uv run ruff format .          # format
 uv run mypy src tests         # strict type check
+uv run pytest --update-snapshots          # rewrite snapshots + README blocks
 ```
+
+Web sessions run `.claude/hooks/session-start.sh`, which does the `uv sync` for
+you.
 
 Before considering any task done: `ruff check`, `ruff format --check`, `mypy`, and
 `pytest` must all pass. Do not commit with a failing or skipped test.
@@ -58,7 +113,7 @@ seems to require breaking one, stop and say so rather than working around it.
 
 - **Do not add `pydantic-settings`.** If something seems to need it, the design is
   being fought. Raise it instead of adding the dependency.
-- **Do not add any runtime dependency** without asking. `pydantic>=2` plus stdlib
+- **Do not add any runtime dependency** without asking. `pydantic>=2.8` plus stdlib
   is the whole budget. Dev dependencies are fine.
 - **Do not add configuration knobs** beyond the `settings()` table in `PLAN.md`.
   A behaviour that seems to want an option usually wants a documented opinion.
@@ -71,23 +126,12 @@ seems to require breaking one, stop and say so rather than working around it.
 
 ## Repository layout
 
-```
-src/monoconf/
-  __init__.py     public exports only
-  config.py       Config base class, metaclass, load/resolve
-  settings.py     settings() and SettingsConfigDict
-  fields.py       Field wrapper, flag/env/metavar derivation
-  schema.py       introspection + definition-time validation
-  merge.py        deep merge, Origin, SourceKind, provenance
-  errors.py       exception hierarchy, warnings, error rendering
-  toml.py         the TOML emitter behind --show-config
-  sources/        defaults.py, files.py, env.py, cli.py
-tests/
-examples/
-```
+`src/monoconf/` holds the modules in the table above. The tests are in `tests/`,
+and the three examples in `examples/` are `minimal.py`, `full.py` and `nested.py`.
 
 `__init__.py` exports exactly: `Config`, `settings`, `Field`, `SourceKind`,
 `Origin`, and the exception types. Adding to that list is an API decision — ask.
+There is no `__version__`, and adding one counts as the same decision.
 
 `merge.py`, `schema.py` and `toml.py` have no I/O. Keep it that way; it is why they
 can be tested exhaustively.
@@ -114,22 +158,34 @@ can be tested exhaustively.
   real `os.environ`, never touch real config paths, never monkeypatch
   `sys.platform` as a substitute for the CI matrix.
 - Test behaviour through the public API. Reach into internals only for
-  `merge.py` and `schema.py`, which are the pure core.
+  `merge.py`, `schema.py` and `toml.py`, which are the pure core.
 - New source, new flag form, new error: add the acceptance test from the Test
   plan section of `PLAN.md` before the implementation.
-- Snapshot tests cover `--help`, `--show-config`, and rendered errors. If a
-  snapshot changes, that is a user-visible change — say so explicitly in the
-  commit message rather than silently regenerating it.
+- Snapshot tests cover `--help`, `--show-config`, and rendered errors. They are
+  plain files in `tests/snapshots/`, compared through the `snapshot` fixture in
+  `conftest.py`. If a snapshot changes, that is a user-visible change: say so
+  explicitly in the commit message rather than silently regenerating it.
+- The README's code and output blocks are generated from `examples/`. A block
+  preceded by `<!-- source: examples/x.py -->` or
+  `<!-- output: [VAR=v] python examples/x.py args -->` is checked by
+  `tests/test_readme.py`. `--update-snapshots` regenerates these too; review the
+  diff before committing.
+- The `--help` snapshot must not use short flags: argparse 3.13 renders them
+  differently from 3.11 and 3.12.
+- CI runs 3.11–3.13 on Linux, macOS and Windows, plus a `pydantic-floor` job
+  pinned to pydantic 2.8. A change that needs newer pydantic raises the floor in
+  `pyproject.toml`, and that needs a PLAN.md amendment.
 - Coverage floor is 85% in CI; target 90%. `merge.py` and `schema.py` should be
   at 100%.
 
 ## Working style
 
-- Follow the milestone order in `PLAN.md` (M1–M9). Each milestone ends green:
-  tests pass, mypy clean, a working example.
 - Prefer small commits that each leave the tree working over one large one.
 - Commit messages: imperative mood, first line under 72 chars, body explaining
-  *why* when the change isn't obvious. Reference the milestone (`M4: ...`).
+  *why* when the change isn't obvious. The milestones are finished, so there's no
+  `M<n>:` prefix any more.
+- A user-visible change gets a line under `## Unreleased` in `CHANGELOG.md`.
+- Keep the examples working and the README true: both are tested.
 - When a design question comes up that `PLAN.md` doesn't answer, write down the
   options and ask. Do not pick one silently and bury it in an implementation —
   the opinionated design is the product, so undocumented opinions are bugs.

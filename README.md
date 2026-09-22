@@ -139,12 +139,13 @@ Either give Endpoint a single-string constructor, or annotate the field:
     endpoint: Annotated[Endpoint, BeforeValidator(Endpoint.parse)] = ...
 ```
 
-A type with a `__init__(self, value: str)` passes this check, and so does one with
-a pydantic `BeforeValidator` or `__get_pydantic_core_schema__`, an `Enum` with
-string values, or any of the standard library types pydantic already reads from a
-string, such as `Path`, `datetime`, `UUID`, `Decimal` and `IPv4Address`. File values
-are not turned into strings first: a TOML datetime reaches your field as a
-datetime.
+The check passes for an `Enum` with string values, a type annotated with a
+pydantic `BeforeValidator`, one that defines `__get_pydantic_core_schema__`, and any
+of the standard library types pydantic already reads from a string, such as `Path`,
+`datetime`, `UUID`, `Decimal` and `IPv4Address`. A plain class with a string
+constructor is not enough on its own, because pydantic cannot build a schema for
+it; give it one of those hooks. File values are not turned into strings first: a
+TOML datetime reaches your field as a datetime.
 
 ## Files and drop-ins
 

@@ -2,6 +2,35 @@
 
 2026-09-17
 
+> **Status and reading guide.** All nine milestones are complete; this is the design
+> behind 0.1.0. The body below is the original plan. The dated **Amendments** at the
+> end override it wherever they disagree, so before relying on a body section, check
+> its row here. Read by section rather than cover to cover:
+> `grep -n '^##' PLAN.md` lists them.
+>
+> | Body section | Amendments that change it |
+> | --- | --- |
+> | Dependencies | The pydantic floor is 2.8 |
+> | `settings(...)` | app_name inference |
+> | Schema rules: Booleans | Nullable booleans |
+> | Schema rules: Lists | Container-typed fields; Flag name from a list field; Clearing a nullable list |
+> | Schema rules: Nesting | Nullable nested models |
+> | Definition-time errors | Container-typed fields; root_table shadowing a field; A dotted root table shadowing a field |
+> | Custom types | String-constructibility probe; What "constructible from a single string" means in practice |
+> | The chain; Default paths | Multi-path layers; XDG_CONFIG_DIRS ordering |
+> | Merge semantics | Empty strings; Clearing a nullable list |
+> | `--config-override` | Where MYAPP_CONFIG_OVERRIDE lands; `--config-override` and its variable |
+> | Two-pass parsing | No flag abbreviation; `--help` is never withheld |
+> | Root table | The root table in a shared file; A dotted root table shadowing a field |
+> | Parsing | Lax coercion is the whole of it |
+> | Unknown keys | Unknown environment variables; The root table in a shared file |
+> | Help output | Metavar derivation; `--help` is never withheld |
+> | `--show-config` | --show-config output; `--show-config` does not need the positionals; What `--show-config` dumps |
+> | Exception hierarchy | HelpRequested and ShowConfigRequested |
+> | Rewriting validation errors | Rewritten validation errors |
+> | Snapshot tests | Snapshots are plain files |
+> | Layout; Build order (M9) | Three examples; Publishing is by hand |
+
 ## Overview
 
 **monoconf** is an opinionated universal configuration library for Python 3.11+. One schema definition — a pydantic v2 model — produces a CLI parser, an environment reader, and a layered TOML file loader, resolved through a single fixed precedence order.
@@ -532,6 +561,7 @@ monoconf/
 │   ├── schema.py         # introspection + all definition-time validation
 │   ├── merge.py          # deep merge, Origin, SourceKind, provenance
 │   ├── errors.py         # exception hierarchy, warnings, error rendering
+│   ├── toml.py           # the TOML emitter behind --show-config
 │   ├── sources/
 │   │   ├── defaults.py
 │   │   ├── files.py      # discovery, platform paths, TOML, root table
@@ -590,7 +620,7 @@ README carries the whole story; no docs site for v1.
 
 ## Build order
 
-Nine milestones. Each ends with tests passing, `mypy --strict` clean, and a working example — no milestone leaves the tree in a state where the public surface is half-built.
+All nine are complete (0.1.0); the history is in `git log`. Nine milestones. Each ends with tests passing, `mypy --strict` clean, and a working example — no milestone leaves the tree in a state where the public surface is half-built.
 
 **M1 — Skeleton.** `uv init`, src layout, pyproject, ruff/mypy/pytest config, CI matrix, MIT licence, empty `py.typed`. One trivial test so CI is green from the first commit.
 
