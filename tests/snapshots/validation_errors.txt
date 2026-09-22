@@ -1,0 +1,15 @@
+myapp: invalid configuration
+
+  port: 'nine thousand' is not a valid integer
+    from <root>/home/myapp.d/10-bad.toml
+
+  log_level: 'loud' is not one of: debug, info, warning, error
+    from MYAPP_LOG_LEVEL
+
+  retry_codes[1]: 'soon' is not a valid integer
+    from --retry-code
+
+  database.port: 'high' is not a valid integer
+    from MYAPP_DATABASE__PORT
+
+Try 'myapp --help' for usage.

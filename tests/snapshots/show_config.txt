@@ -1,0 +1,15 @@
+# myapp resolved configuration
+# input_path = "in.csv"   # positional, CLI-only
+# dataset                 # positional, CLI-only, not given
+output_dir = "out"        # default
+port = 9090               # <root>/etc/myapp.toml
+log_level = "warning"     # <root>/etc/myapp.d/20-site.toml
+verbose = true            # --verbose
+color = true              # default
+retry_codes = [429]       # --retry-code
+tags = ["blue", "green"]  # <root>/home/myapp.toml
+# proxy = null            # MYAPP_PROXY
+
+[database]
+host = "db.internal"  # <root>/etc/myapp.toml
+port = 6432           # MYAPP_DATABASE__PORT

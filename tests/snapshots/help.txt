@@ -1,0 +1,31 @@
+usage: myapp [-h] [--config-override PATH] [--show-config] [--output-dir PATH]
+             [--port N] [--log-level LOG_LEVEL] [--verbose] [--no-color]
+             [--retry-code N] [--tag TAG] [--proxy PROXY]
+             [--database-host DATABASE_HOST] [--database-port N]
+             INPUT_PATH DATASET
+
+positional arguments:
+  INPUT_PATH            Path to the input file.
+  DATASET               Dataset name.
+
+options:
+  -h, --help            show this help message and exit
+  --config-override PATH
+                        Read this file as well, above every discovered file and below
+                        the environment. Repeatable; the last one wins.
+  --show-config         Print the resolved configuration as TOML, with where each value
+                        came from, and exit.
+  --output-dir PATH     Output directory. [out]
+  --port N              Port to listen on. [9090]
+  --log-level LOG_LEVEL
+                        One of: debug, info, warning, error. [warning]
+  --verbose             Enable verbose logging.
+  --no-color            Disable coloured output.
+  --retry-code N        HTTP status to retry. Repeatable. [502, 503]
+  --tag TAG             Tag to apply. Repeatable. [blue, green]
+  --proxy PROXY         Proxy URL. [none]
+  --database-host DATABASE_HOST
+                        Database host. [db.internal]
+  --database-port N     Database port. [6432]
+
+See https://example.com/docs for the full config reference.

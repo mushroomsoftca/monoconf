@@ -80,6 +80,7 @@ src/monoconf/
   schema.py       introspection + definition-time validation
   merge.py        deep merge, Origin, SourceKind, provenance
   errors.py       exception hierarchy, warnings, error rendering
+  toml.py         the TOML emitter behind --show-config
   sources/        defaults.py, files.py, env.py, cli.py
 tests/
 examples/
@@ -88,8 +89,8 @@ examples/
 `__init__.py` exports exactly: `Config`, `settings`, `Field`, `SourceKind`,
 `Origin`, and the exception types. Adding to that list is an API decision — ask.
 
-`merge.py` and `schema.py` have no I/O. Keep it that way; it is why they can be
-tested exhaustively.
+`merge.py`, `schema.py` and `toml.py` have no I/O. Keep it that way; it is why they
+can be tested exhaustively.
 
 ## Code style
 

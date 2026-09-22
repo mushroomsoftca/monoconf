@@ -27,10 +27,22 @@ cfg = AppConfig.load()
 [PLAN.md](PLAN.md), which is the design authority: what monoconf does and why it
 does it that way. [AGENTS.md](AGENTS.md) covers how to work on the repository.
 
-M1–M7 have landed, and the precedence chain is complete: schema defaults, system
-files and their drop-ins, user files and theirs, `--config-override`, the
-environment, and the command line. `load()` and `resolve()` resolve all eight
-layers, `--help` shows the default each flag would actually fall back to on the
-machine it is running on, and every resolved value knows which file, variable or
-flag it came from. Error rendering and `--show-config` arrive in M8; the README
-proper, with the precedence table and the full rationale, arrives with M9.
+M1–M8 have landed. `load()` and `resolve()` resolve all eight layers of the
+precedence chain: schema defaults, system files and their drop-ins, user files and
+theirs, `--config-override`, the environment, and the command line. Every resolved
+value knows which file, variable or flag it came from, and that is how monoconf
+reports errors. A bad value is reported in plain terms, together with the file,
+variable or flag that set it:
+
+```
+myapp: invalid configuration
+
+  port: 'nine thousand' is not a valid integer
+    from /etc/myapp.d/20-site.toml
+```
+
+`--help` shows the default each flag would actually fall back to on the machine
+it is running on. With `settings(show_config=True)`, `--show-config` prints the
+resolved configuration as TOML, with a comment saying where each value came from.
+Saved to a file, that output reproduces the same configuration. The README proper,
+with the precedence table and the full rationale, arrives with M9.

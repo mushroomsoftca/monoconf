@@ -53,3 +53,31 @@ def test_minimal_reads_the_environment() -> None:
     assert result.returncode == 0, result.stderr
     assert "in.csv -> /srv/out" in result.stdout
     assert "output_dir came from APP_OUTPUT_DIR" in result.stdout
+
+
+def test_show_config_needs_no_input_file() -> None:
+    result = run("show_config.py", "--show-config", "--port", "9090")
+    assert result.returncode == 0, result.stderr
+    # The program names itself after the script, as it does in --help.
+    assert result.stdout.startswith("# show_config.py resolved configuration\n")
+    lines = [" ".join(line.split()) for line in result.stdout.splitlines()]
+    assert "# input_path # positional, CLI-only, not given" in lines
+    assert "port = 9090 # --port" in lines
+
+
+def test_show_config_output_pins_the_configuration(tmp_path: Path) -> None:
+    env = {**ENV, "MYAPP_DATABASE__HOST": "db.internal"}
+    dumped = run("show_config.py", "--show-config", "--port", "9090", env=env)
+    assert dumped.returncode == 0, dumped.stderr
+    pinned = tmp_path / "pinned.toml"
+    pinned.write_text(dumped.stdout, encoding="utf-8")
+    result = run("show_config.py", "--config-override", str(pinned), "in.csv")
+    assert result.returncode == 0, result.stderr
+    assert "serving in.csv on port 9090" in result.stdout
+    assert "database db.internal:5432" in result.stdout
+
+
+def test_show_config_reports_a_bad_value_with_its_source() -> None:
+    result = run("show_config.py", "in.csv", env={**ENV, "MYAPP_PORT": "high"})
+    assert result.returncode == 2
+    assert "port: 'high' is not a valid integer\n    from MYAPP_PORT" in result.stderr
