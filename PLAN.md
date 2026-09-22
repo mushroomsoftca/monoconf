@@ -330,7 +330,7 @@ The check is per file, so a system file may use one form and a user file the oth
 
 `tomllib.load(f, parse_float=float)` in binary mode. Wrap `TOMLDecodeError` into `ConfigFileError` carrying the path plus tomllib's line/column, so the operator gets `/etc/myapp.d/20-site.toml:14: Expected '=' after a key`.
 
-TOML's native types (datetime, date, time, arrays, inline tables) pass through to pydantic unchanged — file values are *not* stringified. Only CLI and env go through string coercion. Worth stating in the docs, since it means a TOML `port = "8080"` is a type error while `MYAPP_PORT=8080` is fine.
+TOML's native types (datetime, date, time, arrays, inline tables) pass through to pydantic unchanged — file values are *not* stringified, where CLI and env values arrive as strings and have nowhere else to be coerced. What happens next is the same for all of them: one lax validation pass over the merged result. A TOML `port = "8080"` is therefore accepted exactly as `MYAPP_PORT=8080` is. See *Lax coercion is the whole of it* under Amendments.
 
 ### Unknown keys
 
@@ -884,3 +884,47 @@ The milestone list puts `MYAPP_CONFIG_OVERRIDE` in M6, with the environment sour
 It reads a *file* layer that does not exist until M7, so it ships in M7 instead,
 alongside `--config-override`, the path validation and the layer it feeds --
 where it can be tested against something real. M6 is the value-reading source only.
+
+2026-09-22
+
+Implementing M7 settled five questions the text above leaves open or gets wrong. The
+same rule applies as to the amendments above: the opinion is the product, so it is
+written down rather than left in the code for someone to infer.
+
+### Lax coercion is the whole of it
+
+*Parsing* claimed a TOML `port = "8080"` was a type error. It is not, and it cannot be
+while *Merge semantics* validates once, at the end, on the merged result: the command
+line and the environment hand pydantic strings for every field they set, so that single
+pass has to run in pydantic's lax mode, and lax mode coerces a file's `"8080"` just as
+willingly. Rejecting it would need either a second validation pass for file-sourced
+leaves or a type check of monoconf's own, and validating once is worth more than the
+extra rejection — a wrong type still fails, in the one place every other error is
+reported.
+
+What survives is the narrower and more useful claim: monoconf stringifies nothing on the
+way in. A TOML datetime reaches pydantic as a datetime, and an array as an array.
+
+### The root table in a shared file
+
+The both-forms error fires only when the root table is present **and** a top-level key
+matches a field or nested model this schema would itself read. The literal rule — root
+table plus any other top-level key — rejects every real `pyproject.toml`, which leaves
+`root_table="tool.myapp"` unusable in the one file where a dotted root table occurs at
+all, and the root-table form exists precisely for files an application is a guest in.
+
+The narrower rule still catches everything the throw was for: a key that would silently
+do nothing is exactly a key this schema reads. Everything else outside the root table
+belongs to another application and passes in silence, with one exception — a key within
+edit distance of one of ours (`prt` beside `port`) warns `UnknownConfigKey`, because
+that is an operator's mistake with a dead setting behind it. `strict_unknown` does not
+escalate that warning: it governs what this application's own table holds, and a key
+outside it was never ours to refuse.
+
+### `--config-override` and its variable
+
+When both name files, the flag replaces `MYAPP_CONFIG_OVERRIDE` rather than stacking on
+it. A list of files is a value like any other, lists replace wholesale at every layer,
+and the command line beats the environment whole. The variable is read only when the
+flag is absent, and it is ignored entirely when either `config_override` or
+`env_enabled` is off: a feature that is switched off is switched off.

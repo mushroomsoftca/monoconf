@@ -143,6 +143,9 @@ tested exhaustively.
   rendering happens after file and env resolution.
 - Drop-ins sort by byte-wise filename, not numerically. `9-a.toml` sorts after
   `20-b.toml`. This is deliberate and matches systemd.
-- TOML file values are **not** stringified. Only CLI and env go through string
-  coercion. A TOML `port = "8080"` is correctly a type error.
+- TOML file values are **not** stringified: a TOML datetime reaches pydantic as a
+  datetime. They still meet the same lax validation pass everything else does,
+  so a TOML `port = "8080"` is coerced rather than refused. Validation happens
+  once, on the merged result, and that pass has to be lax for the CLI and the
+  environment, which deal only in strings.
 - Lists replace wholesale at every layer. Never append.
