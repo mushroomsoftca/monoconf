@@ -947,3 +947,77 @@ so `root_table="tool.myapp"` let a field named `tool` through — and a file in 
 form would then have a `[tool]` table that is both this schema's field and the address
 of its settings. The check compares against the root table's first segment instead,
 which is the name a file actually puts at the top level.
+
+2026-09-22
+
+M8 settled the questions below before any of it was built: the rendered output is the
+user interface, so its rules are written down first.
+
+### `--show-config` does not need the positionals
+
+The question `--show-config` answers is "why is `port` 9090?", and making the operator
+invent an input file before they may ask it helps nobody. While `--show-config` is given,
+every positional is optional. A positional that was given is dumped commented, as
+*--show-config output* above says; one that was not is dumped commented too, marked
+`not given`:
+
+```toml
+# input_path = "in.csv"   # positional, CLI-only
+# dataset                 # positional, CLI-only, not given
+```
+
+Validation still happens once. When a positional is missing, that one pass runs against
+a model derived from the application's own — its validators included — in which the
+missing positionals are `T | None = None`. Everything else is validated exactly as a
+normal run would validate it, and fails exactly as loudly.
+
+`--help` beats `--show-config` when both are given: help is the one that is never
+withheld.
+
+### What `--show-config` dumps
+
+The validated model, not the merged dict: the dump shows what the application will
+actually be handed, coerced and typed, which is also what makes the round-trip exact.
+Rendering follows *--show-config output* above, and fixes the remaining details:
+
+- An `Enum` is its value. A `date`, `time` or `datetime` is its ISO 8601 string. A set
+  is an array, sorted, because a set has no order and the dump has to be stable.
+- Anything else that is not a TOML scalar is `str(value)` — which is the whole
+  contract a field type signs up to, and which for pydantic's secret types is the mask.
+  `--show-config` never prints a secret.
+- `None`, or an array containing it, is commented out, TOML having no null.
+- Scalars come before tables at every level, in declaration order. Provenance comments
+  are aligned within each table.
+- The dump is always in the top-level form, never under the root table. Both are valid
+  in a file the application owns, and the top-level form is the one that cannot be
+  mistaken for a guest's table in a shared file.
+
+### Rewritten validation errors
+
+- **Where a value came from** is the origin of the longest prefix of the error's location
+  that has one: an error at `tags.1` is from wherever `tags` came from, lists being
+  values that one layer set whole.
+- **The path shown** is the field's dotted path, with a list index as `[1]`. Pydantic
+  adds location segments of its own for unions and validator chains; they mean nothing
+  to an operator and are dropped.
+- **An error with no origin** is either a value no source set (`no value from any
+  source`) or a model-level validator's, which is attributed to the model it checked,
+  not to a leaf it might have been about.
+- The message names the offending value, in pydantic's own lax terms — "is not a valid
+  integer" — and falls back to pydantic's message, first letter lowered, for the long
+  tail of constraint errors that already read well.
+
+`load()` prints the rendered block as it stands, followed by a blank line and the
+`Try 'myapp --help'` line. It already names the program; prefixing it again, as every
+other error is prefixed, would say `myapp: myapp:`.
+
+### Snapshots are plain files
+
+Snapshot tests compare against `tests/snapshots/*.txt`, exactly. `pytest
+--update-snapshots` rewrites them, so every change to user-visible output arrives as a
+diff to a text file, reviewed like any other. No snapshot library: the whole mechanism
+is a fixture, and the dev dependency would outweigh it.
+
+The `--help` snapshot uses a model without short flags, because argparse 3.13 renders
+an option with both forms differently from 3.11 and 3.12; `test_help.py` still covers
+short flags by fragment.
