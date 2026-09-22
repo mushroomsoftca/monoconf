@@ -55,29 +55,74 @@ def test_minimal_reads_the_environment() -> None:
     assert "output_dir came from APP_OUTPUT_DIR" in result.stdout
 
 
-def test_show_config_needs_no_input_file() -> None:
-    result = run("show_config.py", "--show-config", "--port", "9090")
+def test_full_help() -> None:
+    result = run("full.py", "--help")
     assert result.returncode == 0, result.stderr
-    # The program names itself after the script, as it does in --help.
-    assert result.stdout.startswith("# show_config.py resolved configuration\n")
+    assert result.stdout.startswith("usage: widgetd [-h] [--config-override PATH]")
+    assert "Serve the widget index over HTTP." in result.stdout
+    assert "--show-config" in result.stdout
+
+
+def test_full_run() -> None:
+    env = {**ENV, "WIDGETD_LOG_LEVEL": "debug"}
+    result = run("full.py", "-p", "9090", "index.csv", env=env)
+    assert result.returncode == 0, result.stderr
+    assert "serving index.csv on port 9090" in result.stdout
+    assert "log level debug from WIDGETD_LOG_LEVEL" in result.stdout
+
+
+def test_full_show_config_needs_no_input_file() -> None:
+    result = run("full.py", "--show-config", "--port", "9090")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("# widgetd resolved configuration\n")
     lines = [" ".join(line.split()) for line in result.stdout.splitlines()]
     assert "# input_path # positional, CLI-only, not given" in lines
     assert "port = 9090 # --port" in lines
 
 
-def test_show_config_output_pins_the_configuration(tmp_path: Path) -> None:
-    env = {**ENV, "MYAPP_DATABASE__HOST": "db.internal"}
-    dumped = run("show_config.py", "--show-config", "--port", "9090", env=env)
+def test_full_show_config_output_pins_the_configuration(tmp_path: Path) -> None:
+    env = {**ENV, "WIDGETD_DATABASE__HOST": "db.internal"}
+    dumped = run("full.py", "--show-config", "--port", "9090", env=env)
     assert dumped.returncode == 0, dumped.stderr
     pinned = tmp_path / "pinned.toml"
     pinned.write_text(dumped.stdout, encoding="utf-8")
-    result = run("show_config.py", "--config-override", str(pinned), "in.csv")
+    result = run("full.py", "--config-override", str(pinned), "index.csv")
     assert result.returncode == 0, result.stderr
-    assert "serving in.csv on port 9090" in result.stdout
+    assert "serving index.csv on port 9090" in result.stdout
     assert "database db.internal:5432" in result.stdout
 
 
-def test_show_config_reports_a_bad_value_with_its_source() -> None:
-    result = run("show_config.py", "in.csv", env={**ENV, "MYAPP_PORT": "high"})
+def test_full_reports_a_bad_value_with_its_source() -> None:
+    result = run("full.py", "index.csv", env={**ENV, "WIDGETD_PORT": "high"})
     assert result.returncode == 2
-    assert "port: 'high' is not a valid integer\n    from MYAPP_PORT" in result.stderr
+    assert "port: 'high' is not a valid integer\n    from WIDGETD_PORT" in (
+        result.stderr
+    )
+
+
+def test_full_refuses_an_unknown_key(tmp_path: Path) -> None:
+    override = tmp_path / "typo.toml"
+    override.write_text("prot = 9090\n", encoding="utf-8")
+    result = run("full.py", "--config-override", str(override), "index.csv")
+    assert result.returncode == 2
+    assert "prot" in result.stderr
+    assert "port" in result.stderr
+
+
+def test_nested_names_one_path_three_ways() -> None:
+    result = run("nested.py", "nightly", "--database-pool-size", "20")
+    assert result.returncode == 0, result.stderr
+    assert "nightly on localhost with a pool of 20" in result.stdout
+    assert "pool size came from --database-pool-size" in result.stdout
+
+    env = {**ENV, "MYAPP_DATABASE__POOL_SIZE": "30"}
+    result = run("nested.py", "nightly", env=env)
+    assert result.returncode == 0, result.stderr
+    assert "pool size came from MYAPP_DATABASE__POOL_SIZE" in result.stdout
+
+
+def test_nested_help_lists_the_dotted_flags() -> None:
+    result = run("nested.py", "--help")
+    assert result.returncode == 0, result.stderr
+    assert "--database-pool-size N" in result.stdout
+    assert "--database-port N" in result.stdout
