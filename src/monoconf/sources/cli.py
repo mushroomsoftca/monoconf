@@ -42,6 +42,7 @@ _SENTINEL: Final = _Unset()
 
 _HELP_DEST = "_monoconf_help"
 _OVERRIDE_DEST = "_monoconf_config_override"
+_SHOW_DEST = "_monoconf_show_config"
 _USED_DEST = "_monoconf_used"
 
 # Help output is part of the product: a maintainer's README capture must not depend
@@ -54,6 +55,7 @@ class MetaArgs:
     """What pass one found."""
 
     help_requested: bool = False
+    show_config: bool = False
     config_override: tuple[str, ...] = ()
 
 
@@ -156,13 +158,18 @@ def parse_meta(spec: Spec, argv: Sequence[str]) -> MetaArgs:
     namespace, _unknown = parser.parse_known_args(list(argv))
     return MetaArgs(
         help_requested=bool(getattr(namespace, _HELP_DEST)),
+        show_config=bool(getattr(namespace, _SHOW_DEST, False)),
         config_override=tuple(getattr(namespace, _OVERRIDE_DEST, None) or ()),
     )
 
 
 def collect(spec: Spec, ctx: Context) -> Layer:
-    """Pass two: the full parser, and the values it found."""
-    parser = build_parser(spec, {})
+    """Pass two: the full parser, and the values it found.
+
+    Under `--show-config` the positionals are optional: the dump answers "why is
+    this value what it is", which should not need an input file to ask.
+    """
+    parser = build_parser(spec, {}, positionals_optional=ctx.show_config)
     namespace = parser.parse_args(list(ctx.argv))
     values: Values = {}
     origins: Origins = {}
@@ -188,7 +195,9 @@ def render_help(spec: Spec, resolved: Values) -> str:
     return build_parser(spec, resolved).format_help()
 
 
-def build_parser(spec: Spec, resolved: Values) -> argparse.ArgumentParser:
+def build_parser(
+    spec: Spec, resolved: Values, *, positionals_optional: bool = False
+) -> argparse.ArgumentParser:
     """Build the full parser. `resolved` only ever reaches the help text."""
     settings = spec.settings
     parser = _Parser(
@@ -207,12 +216,18 @@ def build_parser(spec: Spec, resolved: Values) -> argparse.ArgumentParser:
         help="show this help message and exit",
     )
     _add_override(parser, settings)
+    _add_show_config(parser, settings)
+    # An absent optional positional is handed the sentinel, like any absent flag.
+    optional: dict[str, Any] = (
+        {"nargs": "?", "default": _SENTINEL} if positionals_optional else {}
+    )
     for field in spec.positionals:
         parser.add_argument(
             dest_for(field.path),
             metavar=field.metavar,
             action=_Store,
             help=_help_text(field, resolved),
+            **optional,
         )
     for field in spec.options:
         _add_option(parser, field, resolved)
@@ -232,6 +247,7 @@ def _meta_parser(settings: Settings) -> _Parser:
     parser = _Parser(prog=program_name(settings), add_help=False, allow_abbrev=False)
     parser.add_argument("-h", "--help", action="store_true", dest=_HELP_DEST)
     _add_override(parser, settings)
+    _add_show_config(parser, settings)
     return parser
 
 
@@ -253,6 +269,25 @@ def _add_override(parser: argparse.ArgumentParser, settings: Settings) -> None:
         help=(
             "Read this file as well, above every discovered file and below the "
             "environment. Repeatable; the last one wins."
+        ),
+    )
+
+
+def _add_show_config(parser: argparse.ArgumentParser, settings: Settings) -> None:
+    """Declare `--show-config`, in both passes.
+
+    Pass one needs it to know the positionals are optional; pass two because it
+    is a flag like any other, and because this is where help output comes from.
+    """
+    if not settings.show_config:
+        return
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        dest=_SHOW_DEST,
+        help=(
+            "Print the resolved configuration as TOML, with where each value came "
+            "from, and exit."
         ),
     )
 

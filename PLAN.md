@@ -983,8 +983,10 @@ Rendering follows *--show-config output* above, and fixes the remaining details:
 - An `Enum` is its value. A `date`, `time` or `datetime` is its ISO 8601 string. A set
   is an array, sorted, because a set has no order and the dump has to be stable.
 - Anything else that is not a TOML scalar is `str(value)` — which is the whole
-  contract a field type signs up to, and which for pydantic's secret types is the mask.
-  `--show-config` never prints a secret.
+  contract a field type signs up to.
+- A pydantic secret type is shown as its mask, commented out. `--show-config` never
+  prints a secret, and a dump fed back as a config file must not replace one with a row
+  of asterisks.
 - `None`, or an array containing it, is commented out, TOML having no null.
 - Scalars come before tables at every level, in declaration order. Provenance comments
   are aligned within each table.

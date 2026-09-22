@@ -11,14 +11,18 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, ClassVar, Self
+from contextvars import ContextVar
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
+from weakref import WeakKeyDictionary
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, create_model
 
+from monoconf import toml
 from monoconf.errors import (
     HelpRequested,
     MonoconfError,
     OutputRequested,
+    ShowConfigRequested,
     ValidationFailed,
     render_validation_error,
 )
@@ -31,6 +35,11 @@ from monoconf.sources import env as env_source
 __all__ = ["Config"]
 
 _ORIGIN_ATTR = "__monoconf_origin__"
+
+# Set while monoconf derives a model of its own from an application's schema. The
+# derived model is not a schema anyone wrote, so it is neither introspected nor
+# checked: it borrows the spec of the class it came from.
+_DERIVING: ContextVar[bool] = ContextVar("monoconf_deriving", default=False)
 
 
 class Config(BaseModel):
@@ -58,6 +67,8 @@ class Config(BaseModel):
         # Runs after pydantic has finished building the model, so model_fields is
         # populated -- which __init_subclass__ cannot promise.
         super().__pydantic_init_subclass__(**kwargs)
+        if _DERIVING.get():
+            return
         cls.__monoconf_spec__ = build_spec(cls)
 
     @classmethod
@@ -96,8 +107,8 @@ class Config(BaseModel):
         """Resolve the configuration with library semantics.
 
         Raises `MonoconfError` subclasses rather than exiting, and reports `--help`
-        as `HelpRequested` carrying the rendered text. Use this in tests and when
-        embedding.
+        and `--show-config` as `HelpRequested` and `ShowConfigRequested`, carrying
+        the rendered text. Use this in tests and when embedding.
 
         `argv=None` means `sys.argv[1:]` and `env=None` means `os.environ`; an empty
         sequence or mapping means exactly that, not a default.
@@ -112,6 +123,7 @@ class Config(BaseModel):
             argv=command_line,
             env=os.environ if env is None else env,
             overrides=meta.config_override,
+            show_config=meta.show_config,
         )
 
         if meta.help_requested:
@@ -119,13 +131,19 @@ class Config(BaseModel):
 
         lower = merge(_lower_layers(spec, ctx))
         values, origins = merge([lower, cli.collect(spec, ctx)])
+        model = _without_positionals(cls) if meta.show_config else cls
         try:
-            resolved = cls.model_validate(values)
+            resolved = model.model_validate(values)
         except ValidationError as error:
             prog = program_name(spec.settings)
             raise ValidationFailed(
                 render_validation_error(prog, spec, origins, error)
             ) from error
+        if meta.show_config:
+            prog = program_name(spec.settings)
+            raise ShowConfigRequested(
+                toml.dump(prog, spec, resolved.model_dump(), origins)
+            )
         # The instance is frozen, and origins are not a field: this is the one way
         # to attach them, and it leaves model_dump, equality and repr untouched.
         object.__setattr__(resolved, _ORIGIN_ATTR, origins)
@@ -146,6 +164,40 @@ class Config(BaseModel):
             raise MonoconfError(
                 f"{type(self).__name__} has no field '{path}'."
             ) from None
+
+
+_C = TypeVar("_C", bound=Config)
+
+# Weakly held: a schema class defined and dropped, as tests do by the hundred,
+# should not be kept alive by a copy of itself.
+_derived: WeakKeyDictionary[type[Config], type[Config]] = WeakKeyDictionary()
+
+
+def _without_positionals(cls: type[_C]) -> type[_C]:
+    """The schema with every positional optional, for `--show-config`.
+
+    Derived from the application's own class, so its validators still run and a
+    value that would fail a real run fails this one too. Positionals given on the
+    command line validate exactly as they would have; only an absent one is let
+    through, as None. Built once per class.
+    """
+    cached = _derived.get(cls)
+    if cached is not None:
+        # A subclass of cls, since that is how it was built below.
+        return cast(type[_C], cached)
+    positionals: dict[str, Any] = {
+        field.name: (field.annotation | None, None)
+        for field in cls.__monoconf_spec__.positionals
+    }
+    token = _DERIVING.set(True)
+    try:
+        derived = create_model(
+            cls.__name__, __base__=cls, __module__=cls.__module__, **positionals
+        )
+    finally:
+        _DERIVING.reset(token)
+    _derived[cls] = derived
+    return derived
 
 
 def _help(spec: Spec, ctx: Context) -> str:

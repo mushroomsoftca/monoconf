@@ -71,7 +71,6 @@ class Level(IntEnum):
         (["a", "b"], ["a", "b"]),
         ((1, 2), [1, 2]),
         ({"b", "a", "c"}, ["a", "b", "c"]),
-        (SecretStr("hunter2"), "**********"),
     ],
 )
 def test_a_value_reads_back_as_itself(value: Any, expected: Any) -> None:
@@ -111,3 +110,12 @@ def test_any_float_reads_back_as_itself(value: float) -> None:
 @given(st.lists(st.integers() | st.text() | st.booleans()))
 def test_any_flat_list_reads_back_as_itself(value: list[Any]) -> None:
     assert read_back(value) == value
+
+
+def test_a_secret_is_masked_and_commented_out() -> None:
+    text = dump(
+        "myapp", App.__monoconf_spec__, {"pw": SecretStr("hunter2")}, {"pw": DEFAULT}
+    )
+    assert "hunter2" not in text
+    assert '# pw = "**********"  # default; secret, not shown' in text
+    assert tomllib.loads(text) == {}

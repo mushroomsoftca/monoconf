@@ -16,10 +16,20 @@ from datetime import date, time
 from enum import Enum
 from typing import Any
 
+import pydantic
+from pydantic import SecretBytes, SecretStr
+
 from monoconf.merge import Origin
 from monoconf.schema import Spec
 
 __all__ = ["dump"]
+
+# pydantic.Secret is newer than the pydantic>=2.0 floor, so it is looked up.
+_SECRETS: tuple[type, ...] = tuple(
+    kind
+    for kind in (SecretStr, SecretBytes, getattr(pydantic, "Secret", None))
+    if isinstance(kind, type)
+)
 
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -99,6 +109,10 @@ def _leaf(
             return _Line(f"# {key}", "positional, CLI-only, not given")
         return _Line(f"# {key} = {rendered}", "positional, CLI-only")
     origin = origins[path].describe()
+    if isinstance(value, _SECRETS):
+        # Shown masked, and commented out: fed back as a live key, the mask would
+        # replace the real secret with a row of asterisks.
+        return _Line(f"# {key} = {rendered}", f"{origin}; secret, not shown")
     if rendered is None:
         # TOML has no null. The key stays visible, so the dump is still a complete
         # picture of the configuration, but reading it back leaves it unset.
@@ -138,8 +152,7 @@ def _value(value: Any) -> str | None:
     if isinstance(value, list | tuple):
         return _array(value)
     # The string-constructibility contract every field type signs: str() is the
-    # form it can be built back from. For pydantic's secret types this is the
-    # mask, so a secret is never printed.
+    # form it can be built back from. For pydantic's secret types it is the mask.
     return _string(str(value))
 
 

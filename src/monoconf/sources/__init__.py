@@ -38,6 +38,9 @@ class Context:
     the resolver that hands them over, so no source is reading another's output.
     """
 
+    show_config: bool = False
+    """Pass one found `--show-config`, which makes the positionals optional."""
+
 
 def scalar_value(field: FieldSpec, raw: str) -> str | None:
     """Apply the empty-string rule to a string from the CLI or the environment.
