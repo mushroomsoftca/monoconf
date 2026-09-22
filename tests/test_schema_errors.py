@@ -128,6 +128,17 @@ def test_field_named_after_the_root_table() -> None:
             myapp: str = ""
 
 
+def test_field_named_after_the_head_of_a_dotted_root_table() -> None:
+    # [tool.myapp] puts 'tool' at the top level of a file, so a field of that
+    # name is the ambiguous one -- 'myapp' never appears there at all.
+    with pytest.raises(SchemaError, match=r"\[tool\.myapp\]"):
+
+        class Shadowing(Config):
+            model_config = settings(app_name="myapp", root_table="tool.myapp")
+
+            tool: str = ""
+
+
 def test_field_named_after_a_renamed_root_table_is_fine() -> None:
     class Renamed(Config):
         model_config = settings(app_name="myapp", root_table="tool.myapp")

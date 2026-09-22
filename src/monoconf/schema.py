@@ -221,6 +221,10 @@ def validate_spec(spec: Spec) -> None:
 
 def _check_reserved(spec: Spec) -> None:
     root_table = spec.settings.root_table
+    # A dotted root table puts only its first segment at the top level of a file,
+    # so that is the name a field can be confused with: [tool.myapp] makes 'tool'
+    # ambiguous, not 'myapp'.
+    root_key = None if root_table is None else root_table.split(".")[0]
     for f in spec.fields:
         top_level = f.path == f.name
         if top_level and f.name in RESERVED_NAMES:
@@ -235,7 +239,7 @@ def _check_reserved(spec: Spec) -> None:
                 "monoconf. Rename the field, or give it a different flag with "
                 "Field(flag=...)."
             )
-        if top_level and root_table is not None and f.name == root_table:
+        if top_level and root_key is not None and f.name == root_key:
             raise SchemaError(
                 f"{_where(spec.model, f.path)}: a top-level field named "
                 f"'{f.name}' cannot be told apart from the root table "

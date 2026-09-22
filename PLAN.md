@@ -939,3 +939,11 @@ defaults and the error is printed beneath it, naming the file. Help always answe
 
 The two-pass structure is unchanged — `--help` is still detected in pass one, before
 anything can complain about a missing positional.
+
+### A dotted root table shadowing a field
+
+The definition-time check compared a field's name against the whole `root_table` string,
+so `root_table="tool.myapp"` let a field named `tool` through — and a file in root-table
+form would then have a `[tool]` table that is both this schema's field and the address
+of its settings. The check compares against the root table's first segment instead,
+which is the name a file actually puts at the top level.
