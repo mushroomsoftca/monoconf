@@ -108,11 +108,11 @@ class Config(BaseModel):
             overrides=meta.config_override,
         )
 
-        lower_values, lower_origins = merge(_lower_layers(spec, ctx))
         if meta.help_requested:
-            raise HelpRequested(cli.render_help(spec, lower_values))
+            raise HelpRequested(_help(spec, ctx))
 
-        values, origins = merge([(lower_values, lower_origins), cli.collect(spec, ctx)])
+        lower = merge(_lower_layers(spec, ctx))
+        values, origins = merge([lower, cli.collect(spec, ctx)])
         try:
             resolved = cls.model_validate(values)
         except ValidationError as error:
@@ -140,6 +140,25 @@ class Config(BaseModel):
             raise MonoconfError(
                 f"{type(self).__name__} has no field '{path}'."
             ) from None
+
+
+def _help(spec: Spec, ctx: Context) -> str:
+    """The help text, showing the defaults the lower layers resolved.
+
+    Guarded, because help is what an operator reaches for when something is
+    already wrong: a file that cannot be parsed must not be able to withhold it.
+    Where a source raises, the schema's own defaults stand in and the reason is
+    printed beneath them, naming the file or the variable. Help always answers.
+    """
+    try:
+        values, _origins = merge(_lower_layers(spec, ctx))
+    except MonoconfError as error:
+        prog = program_name(spec.settings)
+        return (
+            f"{cli.render_help(spec, {})}\n{prog}: {error}\n{prog}: the defaults "
+            "shown above are the schema's own, since that could not be read."
+        )
+    return cli.render_help(spec, values)
 
 
 def _lower_layers(spec: Spec, ctx: Context) -> list[Layer]:

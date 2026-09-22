@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from monoconf import (
     Config,
     ConfigFileError,
+    HelpRequested,
     IgnoredValue,
     Origin,
     SourceError,
@@ -333,6 +334,34 @@ def test_an_unparseable_file_names_the_path_and_the_position(layout: Layout) -> 
     message = str(caught.value)
     assert message.startswith(f"{layout.system}: ")
     assert "line 2" in message
+
+
+def test_help_survives_a_file_it_cannot_parse(layout: Layout) -> None:
+    # --help is what you reach for when something is already wrong, so a broken
+    # file must not be able to withhold it. The defaults fall back to the
+    # schema's, and the reason is printed where the operator will see it.
+    layout.system.write_text("port = 9090\nname == 2\n")
+    with pytest.raises(HelpRequested) as caught:
+        resolve(layout, "--help")
+    text = caught.value.text
+    assert text.startswith("usage: myapp")
+    assert "[8080]" in text
+    assert f"myapp: {layout.system}: " in text
+    assert "line 2" in text
+    assert "the defaults shown above are the schema's own" in text
+
+
+def test_help_survives_a_variable_it_cannot_read(layout: Layout) -> None:
+    # The guard is not about files: any source that raises leaves help standing.
+    with pytest.raises(HelpRequested) as caught:
+        app(layout).resolve(argv=["--help"], env={"MYAPP_TAGS": "[unclosed"})
+    assert "is not valid JSON" in caught.value.text
+
+
+def test_a_broken_file_still_stops_an_ordinary_resolution(layout: Layout) -> None:
+    layout.system.write_text("name == 2\n")
+    with pytest.raises(ConfigFileError):
+        resolve(layout)
 
 
 def test_a_missing_file_is_not_a_problem(layout: Layout) -> None:

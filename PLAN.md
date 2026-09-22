@@ -928,3 +928,14 @@ it. A list of files is a value like any other, lists replace wholesale at every 
 and the command line beats the environment whole. The variable is read only when the
 flag is absent, and it is ignored entirely when either `config_override` or
 `env_enabled` is off: a feature that is switched off is switched off.
+
+### `--help` is never withheld
+
+Help output shows resolved defaults, so rendering it means reading the files first — and
+a file that cannot be parsed would otherwise take `--help` down with it, which is the
+one command an operator reaches for when something is already wrong. So the lower layers
+are resolved inside a guard: if a source raises, help is rendered from the schema's own
+defaults and the error is printed beneath it, naming the file. Help always answers.
+
+The two-pass structure is unchanged — `--help` is still detected in pass one, before
+anything can complain about a missing positional.
