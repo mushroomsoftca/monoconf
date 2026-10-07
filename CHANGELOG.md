@@ -5,20 +5,7 @@ get a dated amendment there.
 
 ## Unreleased
 
-- Every bad value is reported in one run. A variable monoconf cannot read, such as
-  `MYAPP_VERBOSE=maybe` or a malformed JSON list, now joins the `ValidationFailed`
-  report alongside pydantic's errors, instead of raising `SourceError` and hiding
-  the rest. `SourceError` now means only a command line that cannot be parsed.
-  `--help` names such a variable beneath the defaults rather than failing.
-- A mistyped flag is answered with a suggestion, as an unknown file key already
-  was: `unrecognized arguments: --retires 5 (did you mean '--retries'?)`.
-- A secret field's value is no longer printed by `--help` or quoted in a validation
-  error. Help shows `[**********]` for a set secret and `[""]` for an empty one, and
-  a rejected secret is called `the secret`. `--show-config` now also comments out a
-  list of secrets, rather than writing the masks as a live key.
-- Python 3.14 is tested in CI and declared in the classifiers.
-- The licence metadata is the SPDX expression `MIT`, and the sdist no longer ships
-  the repository's CI, agent instructions or lockfile.
+- Nothing yet.
 
 ## 0.1.0
 
@@ -37,6 +24,14 @@ one layered TOML loader, one precedence order.
 - Provenance for every value: `cfg.origin_of("database.host")`.
 - `--help` showing the defaults resolved on this machine; `--show-config` printing
   the resolved configuration as round-trippable TOML with provenance comments.
-- Validation errors rewritten for operators, naming each value's source.
+- A mistyped flag is answered with a suggestion, as an unknown file key is:
+  `unrecognized arguments: --retires 5 (did you mean '--retries'?)`.
+- Every bad value is reported in one run, rewritten for operators and naming its
+  source: a value pydantic rejects, and a variable monoconf cannot read at all,
+  such as `MYAPP_VERBOSE=maybe`, both raise `ValidationFailed`. `SourceError` is a
+  command line that cannot be parsed.
+- A secret field's value is never printed: `--help` and `--show-config` show its
+  mask, and an error calls it `the secret` rather than quoting it.
 - Warnings: `UnknownConfigKey`, `IgnoredValue`, `UnreadableSource`.
-- Requires Python 3.11+ and pydantic 2.8+.
+- Requires Python 3.11+ and pydantic 2.8+. Tested on Python 3.11 to 3.14, on
+  Linux, macOS and Windows.

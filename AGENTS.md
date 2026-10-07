@@ -7,11 +7,13 @@ in PLAN.md to look.
 
 ## Status
 
-- **0.1.0 is complete** on `main`. Milestones M1–M9 have all landed; `git log` has
-  the history, and `CHANGELOG.md` has the user-visible summary. Changes made since
-  0.1.0 are under its `## Unreleased` heading.
-- **Not yet published.** Uploading to TestPyPI is done by hand, by the
-  maintainer. See PLAN.md, amendment *Publishing is by hand*.
+- **0.1.0 is complete** on `main`. Milestones M1–M9 have all landed, and the work
+  since; `git log` has the history.
+- **Not yet published, so still 0.1.0.** Uploading is done by hand, by the
+  maintainer, who tags the uploaded commit `v0.1.0`. Until that tag exists,
+  everything on `main` is 0.1.0, and `CHANGELOG.md`'s 0.1.0 section describes it as
+  it stands. See PLAN.md, amendments *Publishing is by hand* and *0.1.0 is the
+  first upload*.
 - **What's next** is the maintainer's call. PLAN.md § Deferred names the two
   candidates, per-field `cli=False` and list-append semantics, and both need a
   design decision from the maintainer before any code. Nothing is in flight.
@@ -188,7 +190,9 @@ can be tested exhaustively.
 - Commit messages: imperative mood, first line under 72 chars, body explaining
   *why* when the change isn't obvious. The milestones are finished, so there's no
   `M<n>:` prefix any more.
-- A user-visible change gets a line under `## Unreleased` in `CHANGELOG.md`.
+- A user-visible change gets a line under `## Unreleased` in `CHANGELOG.md`. Before
+  `v0.1.0` is tagged there is no released behaviour to change, so it updates the
+  0.1.0 section instead, written as what 0.1.0 does rather than what changed.
 - Keep the examples working and the README true: both are tested.
 - When a design question comes up that `PLAN.md` doesn't answer, write down the
   options and ask. Do not pick one silently and bury it in an implementation —

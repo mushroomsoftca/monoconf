@@ -30,7 +30,7 @@
 > | Rewriting validation errors | Rewritten validation errors; Secrets are never printed; A bad environment value joins the validation report |
 > | Snapshot tests | Snapshots are plain files |
 > | Toolchain; `pyproject.toml` essentials | The package as shipped |
-> | Layout; Build order (M9) | Three examples; Publishing is by hand |
+> | Layout; Build order (M9) | Three examples; Publishing is by hand; 0.1.0 is the first upload |
 
 ## Overview
 
@@ -1182,3 +1182,24 @@ myapp: invalid configuration
   beneath: `myapp: MYAPP_VERBOSE is left out of the defaults shown above: 'maybe' is
   not a boolean; ...`. The rest of the environment still resolves.
 - A rejected secret is `the secret`, as in *Secrets are never printed*.
+
+### 0.1.0 is the first upload
+
+*Publishing is by hand* left one thing implicit: when a version counts as released. The
+work above landed after M9 set the version to 0.1.0, and some of it changes what an
+earlier commit did: a bad environment variable raised `SourceError` and now raises
+`ValidationFailed`. Nothing was uploaded and nothing was tagged, so no one can depend
+on the earlier behaviour, and reporting it as a change would describe a release that
+never existed.
+
+- **A version is released when it is uploaded**, to TestPyPI or PyPI, and the
+  maintainer tags the uploaded commit `v<version>` and pushes the tag. Until then the
+  version is still being written.
+- **Everything on `main` before the `v0.1.0` tag is 0.1.0.** `CHANGELOG.md` describes
+  0.1.0 as it stands, and is edited to match, not appended to, until the tag exists.
+  The amendments here keep the history of how it got there.
+- **From the tag on**, a user-visible change gets a line under `## Unreleased`. One
+  that changes existing behaviour says what to do about it, and while monoconf is
+  pre-1.0 it takes the next minor version.
+- The version stays 0.1.0. There is no `0.2.0` for changes to a release that no one
+  has installed.
