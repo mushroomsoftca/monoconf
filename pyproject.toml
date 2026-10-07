@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "One pydantic model, one CLI, one env reader, one layered TOML loader, one precedence order."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 # 2.8 is the oldest release the whole suite passes on; CI's pydantic-floor job
 # holds it there. Before it, pydantic mishandles a builtin such as str.strip used
 # as a BeforeValidator, which breaks monoconf's definition-time type probe.
@@ -14,10 +15,10 @@ authors = [{ name = "monoconf contributors" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Libraries",
   "Typing :: Typed",
 ]
@@ -31,11 +32,25 @@ Issues = "https://github.com/mushroomsoftca/monoconf/issues"
 dev = ["pytest", "pytest-cov", "mypy", "ruff", "hypothesis"]
 
 [build-system]
-requires = ["hatchling"]
+# 1.27 is the first to write a PEP 639 licence expression into the metadata.
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/monoconf"]
+
+# The sdist carries what it takes to build, test and read the package, and none of
+# the repository's own tooling: CI, agent instructions, the lockfile.
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/examples",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/PLAN.md",
+  "/LICENSE",
+]
 
 [tool.ruff]
 target-version = "py311"

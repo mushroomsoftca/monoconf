@@ -9,6 +9,7 @@ get a dated amendment there.
   error. Help shows `[**********]` for a set secret and `[""]` for an empty one, and
   a rejected secret is called `the secret`. `--show-config` now also comments out a
   list of secrets, rather than writing the masks as a live key.
+- Python 3.14 is tested in CI and declared in the classifiers.
 
 ## 0.1.0
 

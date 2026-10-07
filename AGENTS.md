@@ -172,7 +172,7 @@ can be tested exhaustively.
   diff before committing.
 - The `--help` snapshot must not use short flags: argparse 3.13 renders them
   differently from 3.11 and 3.12.
-- CI runs 3.11–3.13 on Linux, macOS and Windows, plus a `pydantic-floor` job
+- CI runs 3.11–3.14 on Linux, macOS and Windows, plus a `pydantic-floor` job
   pinned to pydantic 2.8. A change that needs newer pydantic raises the floor in
   `pyproject.toml`, and that needs a PLAN.md amendment.
 - Coverage floor is 85% in CI; target 90%. `merge.py` and `schema.py` should be

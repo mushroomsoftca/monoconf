@@ -120,7 +120,7 @@ Booleans are flags that take no value. A field that defaults to `False` becomes
 `--verbose`, and one that defaults to `True` becomes `--no-color`. Lists are
 repeated flags, one value each time: `tags: list[str]` becomes `--tag a --tag b`.
 A nested model's fields become dotted flags and variables. See
-[`examples/nested.py`](examples/nested.py).
+[`examples/nested.py`](https://github.com/mushroomsoftca/monoconf/blob/main/examples/nested.py).
 
 ## Custom types take a string
 
@@ -252,8 +252,9 @@ Warnings are real `Warning` subclasses of `MonoconfWarning`, so `-W error` or
 
 ## Settings
 
-Every argument is optional. [`examples/full.py`](examples/full.py) uses all of
-them.
+Every argument is optional.
+[`examples/full.py`](https://github.com/mushroomsoftca/monoconf/blob/main/examples/full.py)
+uses all of them.
 
 | Argument | Default | Purpose |
 | --- | --- | --- |
@@ -311,5 +312,6 @@ pre-1.0: the opinions are stable, and the details may still change.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). [PLAN.md](PLAN.md) is the design document, and
-[AGENTS.md](AGENTS.md) covers how to work on the repository.
+MIT. See [LICENSE](https://github.com/mushroomsoftca/monoconf/blob/main/LICENSE).
+[PLAN.md](https://github.com/mushroomsoftca/monoconf/blob/main/PLAN.md) is the design document, and
+[AGENTS.md](https://github.com/mushroomsoftca/monoconf/blob/main/AGENTS.md) covers how to work on the repository.
