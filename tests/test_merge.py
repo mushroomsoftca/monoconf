@@ -24,7 +24,8 @@ def layer(values: Values, origin: Origin) -> Layer:
 
 
 def test_describe_names_the_narrowest_thing_it_can() -> None:
-    assert SYSTEM.describe() == "/etc/myapp.toml"
+    # The path as this platform writes it: \etc\myapp.toml on Windows.
+    assert SYSTEM.describe() == str(Path("/etc/myapp.toml"))
     assert ENV.describe() == "MYAPP_PORT"
     assert DEFAULT.describe() == "default"
 

@@ -51,7 +51,8 @@ def test_minimal_reads_the_environment() -> None:
     # prefix is APP_. That inference is the documented fallback for a script.
     result = run("minimal.py", "in.csv", env={**ENV, "APP_OUTPUT_DIR": "/srv/out"})
     assert result.returncode == 0, result.stderr
-    assert "in.csv -> /srv/out" in result.stdout
+    # output_dir is a Path, printed with this platform's separator.
+    assert f"in.csv -> {Path('/srv/out')}" in result.stdout
     assert "output_dir came from APP_OUTPUT_DIR" in result.stdout
 
 
