@@ -255,11 +255,14 @@ Everything monoconf raises is a subclass of `MonoconfError`:
 - `SchemaError` is raised when the class is defined.
 - `ConfigFileError` means a file is unreadable, cannot be parsed, or uses both
   forms.
-- `SourceError` means a bad variable or a bad argument. A flag that does not exist
+- `SourceError` means a command line that cannot be parsed: a flag that does not
+  exist, a flag missing its value, a missing positional. A flag that does not exist
   is refused rather than guessed at, with a suggestion when it is close to a real
   one: `unrecognized arguments: --retires 5 (did you mean '--retries'?)`.
-- `ValidationFailed` is raised after merging. Pydantic's original error is
-  available as its `__cause__`.
+- `ValidationFailed` means one or more bad values, wherever they came from: a value
+  pydantic rejected, or a variable monoconf could not read at all, such as a boolean
+  that is not one. Every one is in the same report. Where pydantic rejected any,
+  its original error is available as the `__cause__`.
 - `OutputRequested` is not a failure. `resolve()` cannot print or exit, so
   `--help` raises `HelpRequested` and `--show-config` raises
   `ShowConfigRequested`. Both subclasses carry the rendered output as `.text` and

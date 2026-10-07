@@ -352,10 +352,13 @@ def test_help_survives_a_file_it_cannot_parse(layout: Layout) -> None:
 
 
 def test_help_survives_a_variable_it_cannot_read(layout: Layout) -> None:
-    # The guard is not about files: any source that raises leaves help standing.
+    # A variable that cannot be read is not raised, so nothing else is lost: it is
+    # left out of the defaults shown and named beneath them.
     with pytest.raises(HelpRequested) as caught:
         app(layout).resolve(argv=["--help"], env={"MYAPP_TAGS": "[unclosed"})
-    assert "is not valid JSON" in caught.value.text
+    text = caught.value.text
+    assert "myapp: MYAPP_TAGS is left out of the defaults shown above: " in text
+    assert "is not a valid JSON array" in text
 
 
 def test_a_broken_file_still_stops_an_ordinary_resolution(layout: Layout) -> None:

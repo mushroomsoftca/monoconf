@@ -12,12 +12,13 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 if TYPE_CHECKING:  # merge.py and schema.py import this module, so these cannot be
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from pydantic_core import ErrorDetails
 
     from monoconf.merge import Origin
     from monoconf.schema import FieldSpec, Spec
+    from monoconf.sources import Rejected
 
 __all__ = [
     "ConfigFileError",
@@ -32,6 +33,7 @@ __all__ = [
     "UnknownConfigKey",
     "UnreadableSource",
     "ValidationFailed",
+    "render_rejected",
     "render_validation_error",
 ]
 
@@ -49,7 +51,10 @@ class ConfigFileError(MonoconfError):
 
 
 class SourceError(MonoconfError):
-    """An environment variable or command-line value could not be read."""
+    """The command line could not be parsed: an unknown flag, a missing value.
+
+    A bad value, from the command line or anywhere else, is a `ValidationFailed`.
+    """
 
 
 class ValidationFailed(MonoconfError):
@@ -103,27 +108,56 @@ def render_validation_error(
     prog: str,
     spec: Spec,
     origins: Mapping[str, Origin],
-    error: ValidationError,
+    error: ValidationError | None,
+    rejected: Mapping[str, tuple[Rejected, Origin]],
 ) -> str:
     """Rewrite pydantic's validation errors for whoever has to act on them.
 
     Pydantic's own output is addressed to the author of the model. The operator
     reading this never saw it, and needs to know which setting is wrong and which
     file or variable it came from. One block per error; never only the first.
+
+    `rejected` are the values a source could not read at all, keyed by path. They
+    are reported in the same list, in declaration order with the rest: to the
+    operator they are bad settings like any other.
     """
     # No "try --help" line here: that is advice for someone at a command line, and
     # load() is the only caller that knows it is talking to one.
     fields = spec.by_path()
-    lines = [f"{prog}: invalid configuration", ""]
-    for detail in error.errors():
+    blocks: list[tuple[str, str, str]] = [
+        (
+            path,
+            f"{path}: {render_rejected(fields.get(path), value)}",
+            f"from {origin.describe()}",
+        )
+        for path, (value, origin) in rejected.items()
+    ]
+    for detail in error.errors() if error is not None else ():
         loc = tuple(detail["loc"])
         field_path, shown = _locate(loc, fields)
-        lines.append(
-            f"  {shown or '(root)'}: {_problem(detail, fields.get(field_path))}"
-        )
-        lines.append(f"    {_provenance(detail, loc, origins, shown)}")
-        lines.append("")
+        problem = _problem(detail, fields.get(field_path))
+        provenance = _provenance(detail, loc, origins, shown)
+        blocks.append((field_path, f"{shown or '(root)'}: {problem}", provenance))
+    order = [field.path for field in spec.fields]
+    blocks.sort(key=lambda block: _position(block[0], order))
+    lines = [f"{prog}: invalid configuration", ""]
+    for _path, head, provenance in blocks:
+        lines.extend((f"  {head}", f"    {provenance}", ""))
     return "\n".join(lines).rstrip()
+
+
+def render_rejected(field: FieldSpec | None, rejected: Rejected) -> str:
+    """A value a source could not read, said as a problem with that value."""
+    shown = "the secret" if field is not None and field.secret else _shown(rejected.raw)
+    return f"{shown} {rejected.problem}"
+
+
+def _position(path: str, order: Sequence[str]) -> int:
+    """Where a path's first field is declared; a model-wide error goes last."""
+    for index, field_path in enumerate(order):
+        if field_path == path or field_path.startswith(f"{path}."):
+            return index
+    return len(order)
 
 
 def _locate(

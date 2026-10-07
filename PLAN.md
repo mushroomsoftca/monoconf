@@ -24,10 +24,10 @@
 > | Root table | The root table in a shared file; A dotted root table shadowing a field |
 > | Parsing | Lax coercion is the whole of it |
 > | Unknown keys | Unknown environment variables; The root table in a shared file; A mistyped flag gets a suggestion |
-> | Help output | Metavar derivation; `--help` is never withheld; Secrets are never printed |
+> | Help output | Metavar derivation; `--help` is never withheld; Secrets are never printed; A bad environment value joins the validation report |
 > | `--show-config` | --show-config output; `--show-config` does not need the positionals; What `--show-config` dumps; Secrets are never printed |
-> | Exception hierarchy | HelpRequested and ShowConfigRequested |
-> | Rewriting validation errors | Rewritten validation errors; Secrets are never printed |
+> | Exception hierarchy | HelpRequested and ShowConfigRequested; A bad environment value joins the validation report |
+> | Rewriting validation errors | Rewritten validation errors; Secrets are never printed; A bad environment value joins the validation report |
 > | Snapshot tests | Snapshots are plain files |
 > | Toolchain; `pyproject.toml` essentials | The package as shipped |
 > | Layout; Build order (M9) | Three examples; Publishing is by hand |
@@ -1142,3 +1142,43 @@ myapp: unrecognized arguments: --retires 5 (did you mean '--retries'?)
   `SourceError`, and still names every leftover argument, as argparse's did.
 - Nothing is accepted on the strength of a match: the suggestion is advice, and the
   flag is still refused.
+
+### A bad environment value joins the validation report
+
+A value pydantic rejected was reported with every other, in one block; a variable
+monoconf could not read at all — a boolean that is not one, a list that starts with `[`
+and is not JSON — raised `SourceError` on the spot, and so hid every other problem in
+the same run. `MYAPP_PORT=high` and `MYAPP_VERBOSE=maybe` were reported one per run,
+and differently. To the operator both are a setting with a bad value, and the report
+now treats them alike:
+
+```
+myapp: invalid configuration
+
+  verbose: 'maybe' is not a boolean; use 1/0, true/false, yes/no or on/off
+    from MYAPP_VERBOSE
+
+  database.port: 'x' is not a valid integer
+    from MYAPP_DATABASE__PORT
+```
+
+- **Sources stay pure.** A source that cannot read a value returns a `Rejected` (the raw
+  value and what is wrong with it) in its place, with its origin, rather than raising.
+  Only the environment source produces one: the CLI's values are strings handed to
+  pydantic, and a file's are what `tomllib` read.
+- **The resolver** takes rejected values out of the layers before merging, so pydantic
+  never sees one and the layers beneath decide the field. It validates once, as
+  always, and raises `ValidationFailed` with pydantic's errors and the rejected values
+  in one list, in field declaration order. Where pydantic rejected nothing, the report
+  holds only the rejected values and has no `__cause__`.
+- **A rejected value is reported even when a higher layer overrides it.** The variable
+  is still wrong, and was wrong before this change too. This differs from a bad file
+  value under a good variable, which validation never sees: that is the merged-dict
+  rule, and it is unchanged.
+- **`SourceError` now means the command line**: a flag that does not exist, one missing
+  its value, a missing positional. argparse stops at the first of those, and they are
+  about the shape of the command rather than a value.
+- **`--help`** leaves a rejected value out of the defaults it shows, and names it
+  beneath: `myapp: MYAPP_VERBOSE is left out of the defaults shown above: 'maybe' is
+  not a boolean; ...`. The rest of the environment still resolves.
+- A rejected secret is `the secret`, as in *Secrets are never printed*.

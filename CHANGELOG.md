@@ -5,6 +5,11 @@ get a dated amendment there.
 
 ## Unreleased
 
+- Every bad value is reported in one run. A variable monoconf cannot read, such as
+  `MYAPP_VERBOSE=maybe` or a malformed JSON list, now joins the `ValidationFailed`
+  report alongside pydantic's errors, instead of raising `SourceError` and hiding
+  the rest. `SourceError` now means only a command line that cannot be parsed.
+  `--help` names such a variable beneath the defaults rather than failing.
 - A mistyped flag is answered with a suggestion, as an unknown file key already
   was: `unrecognized arguments: --retires 5 (did you mean '--retries'?)`.
 - A secret field's value is no longer printed by `--help` or quoted in a validation

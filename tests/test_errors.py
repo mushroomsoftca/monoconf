@@ -229,3 +229,16 @@ def test_a_rejected_secret_is_not_quoted_back() -> None:
     assert "12a4" not in message
     assert "  token: the secret was rejected: " in message
     assert "  pin: the secret is not a valid integer\n    from MYAPP_PIN" in message
+
+
+def test_a_secret_that_cannot_be_read_is_not_quoted_back() -> None:
+    class Keyed(Config):
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=None, user_config=None
+        )
+
+        keys: list[SecretStr] = []
+
+    message = failure(env={"MYAPP_KEYS": '["hunter2"'}, model=Keyed)
+    assert "hunter2" not in message
+    assert "  keys: the secret starts with '[' but is not a valid JSON array" in message

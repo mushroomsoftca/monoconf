@@ -12,10 +12,10 @@ import json
 import warnings
 from typing import Any
 
-from monoconf.errors import IgnoredValue, SourceError
+from monoconf.errors import IgnoredValue
 from monoconf.merge import Layer, Origin, Origins, SourceKind, Values, set_leaf
 from monoconf.schema import FieldKind, FieldSpec, Spec
-from monoconf.sources import Context, scalar_value
+from monoconf.sources import Context, Rejected, scalar_value
 
 __all__ = ["collect"]
 
@@ -51,26 +51,27 @@ def collect(spec: Spec, ctx: Context) -> Layer:
 
 def _value(field: FieldSpec, raw: str) -> Any:
     if field.repeated:
-        return _items(field, raw)
+        return _items(raw)
     if field.kind is FieldKind.BOOL:
-        return _boolean(field, raw)
+        return _boolean(raw)
     # Everything else is handed over as the string it is, unstripped: whitespace
     # inside a value may well be the point. pydantic does the coercion, once.
     return scalar_value(field, raw)
 
 
-def _items(field: FieldSpec, raw: str) -> list[Any]:
+def _items(raw: str) -> list[Any] | Rejected:
     """Read a repeated field: a JSON array, or a comma-separated list."""
     text = raw.strip()
     if text.startswith("["):
         try:
             parsed: list[Any] = json.loads(text)
         except json.JSONDecodeError as error:
-            raise SourceError(
-                f"{field.env_name}={raw!r} starts with '[', so it is read as a JSON "
-                f"array, but it is not valid JSON: {error.msg} at column "
-                f"{error.colno}. Write a JSON array, or a comma-separated list."
-            ) from error
+            reason = f"{error.msg[:1].lower()}{error.msg[1:]} at column {error.colno}"
+            return Rejected(
+                raw,
+                f"starts with '[' but is not a valid JSON array ({reason}); write "
+                "a JSON array, or a comma-separated list",
+            )
         return parsed
     if text == "":
         # An empty variable is the empty list, which is how a list is cleared.
@@ -80,7 +81,7 @@ def _items(field: FieldSpec, raw: str) -> list[Any]:
     return [item.strip() for item in raw.split(",")]
 
 
-def _boolean(field: FieldSpec, raw: str) -> bool:
+def _boolean(raw: str) -> bool | Rejected:
     """Read a boolean, which is an ordinary value here rather than a bare flag.
 
     Parsed rather than left to pydantic, whose accepted spellings and error wording
@@ -91,7 +92,4 @@ def _boolean(field: FieldSpec, raw: str) -> bool:
         return True
     if text in _FALSE:
         return False
-    raise SourceError(
-        f"{field.env_name}={raw!r} is not a boolean. Use one of {_BOOL_FORMS}, in "
-        "any case."
-    )
+    return Rejected(raw, f"is not a boolean; use {_BOOL_FORMS}")

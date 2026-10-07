@@ -24,12 +24,13 @@ from monoconf.errors import (
     OutputRequested,
     ShowConfigRequested,
     ValidationFailed,
+    render_rejected,
     render_validation_error,
 )
-from monoconf.merge import Layer, Origin, merge
+from monoconf.merge import Layer, Origin, Values, leaves, merge, set_leaf
 from monoconf.schema import Spec, build_spec
 from monoconf.settings import program_name, settings
-from monoconf.sources import Context, cli, defaults, files
+from monoconf.sources import Context, Rejected, cli, defaults, files
 from monoconf.sources import env as env_source
 
 __all__ = ["Config"]
@@ -129,18 +130,23 @@ class Config(BaseModel):
         if meta.help_requested:
             raise HelpRequested(_help(spec, ctx))
 
-        lower = merge(_lower_layers(spec, ctx))
-        values, origins = merge([lower, cli.collect(spec, ctx)])
+        layers, rejected = _accepted(_lower_layers(spec, ctx))
+        values, origins = merge([merge(layers), cli.collect(spec, ctx)])
         model = _without_positionals(cls) if meta.show_config else cls
+        prog = program_name(spec.settings)
         try:
             resolved = model.model_validate(values)
         except ValidationError as error:
-            prog = program_name(spec.settings)
             raise ValidationFailed(
-                render_validation_error(prog, spec, origins, error)
+                render_validation_error(prog, spec, origins, error, rejected)
             ) from error
+        if rejected:
+            # Everything that could be read was valid; what could not be read is
+            # still the operator's to fix, and is reported the same way.
+            raise ValidationFailed(
+                render_validation_error(prog, spec, origins, None, rejected)
+            )
         if meta.show_config:
-            prog = program_name(spec.settings)
             raise ShowConfigRequested(
                 toml.dump(prog, spec, resolved.model_dump(), origins)
             )
@@ -208,15 +214,53 @@ def _help(spec: Spec, ctx: Context) -> str:
     Where a source raises, the schema's own defaults stand in and the reason is
     printed beneath them, naming the file or the variable. Help always answers.
     """
+    prog = program_name(spec.settings)
     try:
-        values, _origins = merge(_lower_layers(spec, ctx))
+        layers, rejected = _accepted(_lower_layers(spec, ctx))
+        values, _origins = merge(layers)
     except MonoconfError as error:
-        prog = program_name(spec.settings)
         return (
             f"{cli.render_help(spec, {})}\n{prog}: {error}\n{prog}: the defaults "
             "shown above are the schema's own, since that could not be read."
         )
-    return cli.render_help(spec, values)
+    text = cli.render_help(spec, values)
+    if not rejected:
+        return text
+    fields = spec.by_path()
+    notes = [
+        f"{prog}: {origin.describe()} is left out of the defaults shown above: "
+        f"{render_rejected(fields.get(path), value)}"
+        for path, (value, origin) in rejected.items()
+    ]
+    return f"{text}\n" + "\n".join(notes)
+
+
+Rejections = dict[str, tuple[Rejected, Origin]]
+
+
+def _accepted(layers: list[Layer]) -> tuple[list[Layer], Rejections]:
+    """The layers without the values their sources rejected, and those values.
+
+    A rejected value comes out before the merge, so pydantic never sees one and the
+    layers beneath decide its field. It is kept, with its origin, to be reported
+    with the validation errors: one run names every problem, not only the first.
+    """
+    kept: list[Layer] = []
+    rejected: Rejections = {}
+    for values, origins in layers:
+        bad = {
+            path: value for path, value in leaves(values) if isinstance(value, Rejected)
+        }
+        if not bad:
+            kept.append((values, origins))
+            continue
+        clean: Values = {}
+        for path, value in leaves(values):
+            if path not in bad:
+                set_leaf(clean, path, value)
+        kept.append((clean, {k: v for k, v in origins.items() if k not in bad}))
+        rejected.update({path: (value, origins[path]) for path, value in bad.items()})
+    return kept, rejected
 
 
 def _lower_layers(spec: Spec, ctx: Context) -> list[Layer]:

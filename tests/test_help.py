@@ -159,6 +159,21 @@ def test_defaults_that_need_rendering_rather_than_printing() -> None:
     assert "[true, false]" in text
 
 
+def test_a_bad_variable_does_not_withhold_help() -> None:
+    with pytest.raises(HelpRequested) as caught:
+        App.resolve(
+            argv=["--help"], env={"MYAPP_RETRIES": "7", "MYAPP_VERBOSE": "maybe"}
+        )
+    text = caught.value.text
+    # The rest of the environment still resolves; the bad variable is named
+    # beneath, rather than taking the help down with it.
+    assert "[7]" in text
+    assert text.rstrip().endswith(
+        "myapp: MYAPP_VERBOSE is left out of the defaults shown above: 'maybe' is "
+        "not a boolean; use 1/0, true/false, yes/no or on/off"
+    )
+
+
 def test_help_shows_a_default_resolved_from_the_environment() -> None:
     class Served(Config):
         model_config = settings(

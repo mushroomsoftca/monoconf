@@ -7,6 +7,10 @@ Each module here exposes the same function:
 A source reads its own inputs and returns the values it actually set, paired with
 their origins. It never mutates shared state and never reads another source's
 output: the ordering of the layers lives in the resolver alone.
+
+A value a source cannot read is not raised on the spot. It is returned as a
+`Rejected` in its place, with its origin, and the resolver reports it with the
+validation errors, so that one run names every problem rather than the first.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from dataclasses import dataclass
 
 from monoconf.schema import FieldSpec
 
-__all__ = ["Context", "scalar_value"]
+__all__ = ["Context", "Rejected", "scalar_value"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +44,22 @@ class Context:
 
     show_config: bool = False
     """Pass one found `--show-config`, which makes the positionals optional."""
+
+
+@dataclass(frozen=True, slots=True)
+class Rejected:
+    """A value a source read but could not make sense of.
+
+    It stands where the value would have gone, and the resolver takes it out
+    before merging: it never reaches pydantic, and the layers beneath decide the
+    field as if it had not been set.
+    """
+
+    raw: str
+    """The value as given, which the error quotes back unless it is a secret."""
+
+    problem: str
+    """What is wrong, said of the value: `is not a boolean; use ...`."""
 
 
 def scalar_value(field: FieldSpec, raw: str) -> str | None:

@@ -15,6 +15,7 @@ from monoconf import (
     Origin,
     SourceError,
     SourceKind,
+    ValidationFailed,
     settings,
 )
 
@@ -124,11 +125,15 @@ def test_boolean_false_forms(value: str) -> None:
 
 @pytest.mark.parametrize("value", ["maybe", "", "2", "t"])
 def test_a_bad_boolean_names_the_variable_and_the_accepted_forms(value: str) -> None:
-    with pytest.raises(SourceError) as caught:
+    with pytest.raises(ValidationFailed) as caught:
         resolve({"MYAPP_VERBOSE": value})
     message = str(caught.value)
-    assert "MYAPP_VERBOSE" in message
-    assert "1/0, true/false, yes/no or on/off" in message
+    assert (
+        f"  verbose: {value!r} is not a boolean; use 1/0, true/false, yes/no or on/off\n"
+        "    from MYAPP_VERBOSE"
+    ) in message
+    # Nothing failed pydantic's validation, so there is no pydantic error to keep.
+    assert caught.value.__cause__ is None
 
 
 def test_a_list_is_comma_separated() -> None:
@@ -147,11 +152,40 @@ def test_a_list_can_be_written_as_a_json_array() -> None:
 
 
 def test_a_malformed_json_array_names_the_variable_and_both_forms() -> None:
-    with pytest.raises(SourceError) as caught:
+    with pytest.raises(ValidationFailed) as caught:
         resolve({"MYAPP_TAGS": '["a", "b"'})
     message = str(caught.value)
-    assert "MYAPP_TAGS" in message
-    assert "comma-separated" in message
+    assert (
+        "  tags: '[\"a\", \"b\"' starts with '[' but is not a valid JSON array"
+        in message
+    )
+    assert "write a JSON array, or a comma-separated list" in message
+    assert "    from MYAPP_TAGS" in message
+
+
+def test_every_bad_variable_is_reported_at_once() -> None:
+    env = {
+        "MYAPP_DATABASE__PORT": "x",
+        "MYAPP_TAGS": '["a"',
+        "MYAPP_VERBOSE": "maybe",
+        "MYAPP_PORT": "high",
+    }
+    with pytest.raises(ValidationFailed) as caught:
+        resolve(env)
+    message = str(caught.value)
+    # One report, in declaration order: what monoconf could not read and what
+    # pydantic would not accept are the operator's problem alike.
+    blocks = [line.split(":")[0].strip() for line in message.splitlines()[2::3]]
+    assert blocks == ["port", "verbose", "tags", "database.port"]
+    assert "from MYAPP_VERBOSE" in message
+    assert "from MYAPP_DATABASE__PORT" in message
+
+
+def test_a_bad_variable_is_reported_even_when_a_flag_overrides_it() -> None:
+    # The operator set something unreadable; that the flag wins does not make it
+    # any less wrong.
+    with pytest.raises(ValidationFailed, match="from MYAPP_VERBOSE"):
+        resolve({"MYAPP_VERBOSE": "maybe"}, "--verbose")
 
 
 def test_an_empty_variable_clears_a_list() -> None:

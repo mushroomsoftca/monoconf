@@ -43,8 +43,9 @@ no CLI of its own.
 1. Parse the command line, pass one: `--help`, `--config-override`,
    `--show-config`.
 2. Collect every source as sparse `(values, origins)`: defaults, files, env, CLI.
-3. `merge()` the sources, lowest priority first.
-4. Validate once.
+3. Take out any value a source returned as `Rejected`, then `merge()` the sources,
+   lowest priority first.
+4. Validate once, and report pydantic's errors and the rejected values together.
 5. Attach the origins to the result.
 
 `load()` wraps `resolve()`: it prints output or errors, and exits.
@@ -101,7 +102,9 @@ seems to require breaking one, stop and say so rather than working around it.
    is the only thing that will catch it.
 5. **Sources are pure.** Each `collect()` reads its inputs and returns
    `(values, origins)`. No source mutates shared state or reads another source's
-   output. Ordering lives only in the resolver.
+   output. Ordering lives only in the resolver. A value a source cannot read is
+   returned as a `Rejected` in its place, not raised, so that one run reports every
+   bad value.
 6. **Sparse dicts.** A source contributes a key only if it actually set it. Never
    emit `None` for an absent key.
 7. **Validation happens once**, at the end, on the merged dict. Never per layer.
