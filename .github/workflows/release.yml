@@ -1,0 +1,68 @@
+name: Release
+
+# Pushing a tag v<version> cuts a GitHub release of that commit, with the sdist and
+# wheel attached and the matching CHANGELOG.md section as its notes. PyPI is not
+# involved: no credential beyond this workflow's own token is used.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check the tag names the version being built
+        run: |
+          version="$(uv version --short)"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${version} in pyproject.toml."
+            exit 1
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      # The CI workflow runs the whole matrix on this tag too; this is the gate that
+      # stops a release of a commit that does not pass.
+      - run: uv sync --all-extras --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src tests
+      - run: uv run pytest
+
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+
+      # The section under "## <version>", with its hard-wrapped lines joined back
+      # into paragraphs and bullets: GitHub renders every newline in release notes.
+      - name: Take the release notes from CHANGELOG.md
+        run: |
+          awk -v heading="## ${VERSION}" '
+            function flush() { if (line != "") print line; line = "" }
+            $0 == heading { found = 1; next }
+            !found { next }
+            /^## / { exit }
+            /^[[:space:]]*$/ { flush(); print ""; next }
+            /^- / { flush(); line = $0; next }
+            { sub(/^[[:space:]]+/, ""); line = (line == "") ? $0 : line " " $0 }
+            END { flush() }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no '## ${VERSION}' section to use as release notes."
+            exit 1
+          fi
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --verify-tag \
+            --title "monoconf ${VERSION}" \
+            --notes-file notes.md

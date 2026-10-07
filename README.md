@@ -6,8 +6,12 @@ reader and a layered TOML file loader, all resolved through one fixed precedence
 order. Every resolved value can tell you where it came from.
 
 ```
-pip install monoconf
+pip install "monoconf @ git+https://github.com/mushroomsoftca/monoconf@v0.1.0"
 ```
+
+monoconf is not on PyPI yet. Each release is on the repository's
+[releases page](https://github.com/mushroomsoftca/monoconf/releases), with a wheel
+and an sdist attached, and the line above installs the same tagged commit.
 
 The only runtime dependency is pydantic.
 

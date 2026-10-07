@@ -30,7 +30,7 @@
 > | Rewriting validation errors | Rewritten validation errors; Secrets are never printed; A bad environment value joins the validation report |
 > | Snapshot tests | Snapshots are plain files |
 > | Toolchain; `pyproject.toml` essentials | The package as shipped |
-> | Layout; Build order (M9) | Three examples; Publishing is by hand; 0.1.0 is the first upload |
+> | Layout; Build order (M9) | Three examples; Publishing is by hand; 0.1.0 is the first upload; Releases are cut on GitHub |
 
 ## Overview
 
@@ -1203,3 +1203,25 @@ never existed.
   pre-1.0 it takes the next minor version.
 - The version stays 0.1.0. There is no `0.2.0` for changes to a release that no one
   has installed.
+
+### Releases are cut on GitHub
+
+The maintainer asked for 0.1.0 to be released on GitHub rather than uploaded to PyPI.
+That changes what *released* means in *0.1.0 is the first upload*, and the "no release
+workflow" of *Publishing is by hand*.
+
+- **A version is released when its tag is pushed.** Pushing `v<version>` runs
+  `.github/workflows/release.yml`, which publishes a GitHub release of that commit
+  with the sdist and wheel attached. The rest of *0.1.0 is the first upload* stands:
+  before the tag, the CHANGELOG describes the version as it stands; after it, changes
+  go under `## Unreleased`.
+- **The workflow checks before it publishes.** The tag has to match the version in
+  `pyproject.toml`; lint, the type check and the tests run again on the tagged commit;
+  the artifacts must pass `twine check --strict`; and `CHANGELOG.md` must have a
+  `## <version>` section, whose text, unwrapped, becomes the release notes.
+- **No publishing credential is added.** The workflow uses its own `GITHUB_TOKEN`,
+  with `contents: write` to create the release, and nothing else. A PyPI upload stays
+  by hand, as *Publishing is by hand* has it, and is a separate decision.
+- **The README installs from the tag**, since `pip install monoconf` cannot work
+  before a PyPI upload and the repository is private. When monoconf reaches PyPI, the
+  install line goes back to `pip install monoconf`.
