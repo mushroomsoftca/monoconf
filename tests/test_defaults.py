@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import itertools
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -56,14 +56,18 @@ def test_mutable_defaults_are_not_shared_between_resolutions() -> None:
 
 
 def test_a_default_factory_is_evaluated_per_resolution() -> None:
+    # A counter rather than the clock: two calls to datetime.now() can return the
+    # same instant on Windows, whose clock is coarse, and that is not the question.
+    calls = itertools.count()
+
     class Stamped(Config):
         model_config = settings(app_name="myapp", system_config=None, user_config=None)
 
-        started: datetime = pydantic_field(default_factory=datetime.now)
+        run: int = pydantic_field(default_factory=lambda: next(calls))
 
-    first = Stamped.resolve(argv=[], env={}).started
-    second = Stamped.resolve(argv=[], env={}).started
+    first = Stamped.resolve(argv=[], env={}).run
+    second = Stamped.resolve(argv=[], env={}).run
     # Reusing the import-time default would freeze this at whenever the class was
     # defined, which is the wrong answer for anything time- or process-dependent.
-    assert second >= first
-    assert Stamped.__monoconf_spec__.by_path()["started"].default != second
+    assert second > first
+    assert Stamped.__monoconf_spec__.by_path()["run"].default < first
