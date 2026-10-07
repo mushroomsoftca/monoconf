@@ -119,3 +119,18 @@ def test_a_secret_is_masked_and_commented_out() -> None:
     assert "hunter2" not in text
     assert '# pw = "**********"  # default; secret, not shown' in text
     assert tomllib.loads(text) == {}
+
+
+def test_a_list_of_secrets_is_masked_and_commented_out() -> None:
+    class Keyed(Config):
+        model_config = settings(app_name="myapp", system_config=None, user_config=None)
+
+        keys: list[SecretStr] = []
+
+    keys = [SecretStr("k-one"), SecretStr("k-two")]
+    text = dump("myapp", Keyed.__monoconf_spec__, {"keys": keys}, {"keys": DEFAULT})
+    assert "k-one" not in text
+    # The value is a list, not a secret: only the field knows. Live, the masks
+    # would replace both keys when the dump is read back.
+    assert '# keys = ["**********", "**********"]' in text
+    assert tomllib.loads(text) == {}

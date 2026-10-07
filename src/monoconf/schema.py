@@ -29,6 +29,9 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     PydanticUserError,
+    Secret,
+    SecretBytes,
+    SecretStr,
     TypeAdapter,
     ValidationError,
 )
@@ -45,12 +48,24 @@ from monoconf.fields import (
 )
 from monoconf.settings import Settings, resolve_settings
 
-__all__ = ["FieldKind", "FieldSpec", "KeyTree", "NestedSpec", "Spec", "build_spec"]
+__all__ = [
+    "SECRET_TYPES",
+    "FieldKind",
+    "FieldSpec",
+    "KeyTree",
+    "NestedSpec",
+    "Spec",
+    "build_spec",
+]
 
 # monoconf owns these names whether or not the features behind them are enabled,
 # so turning one on later cannot break a schema that already worked.
 RESERVED_NAMES = frozenset({"help", "config_override", "show_config"})
 RESERVED_FLAGS = frozenset({"--help", "--config-override", "--show-config"})
+
+# pydantic's secret types. A value of one is never printed: not in --help, not in
+# a validation error, not in --show-config.
+SECRET_TYPES = (Secret, SecretStr, SecretBytes)
 
 
 class FieldKind(StrEnum):
@@ -107,6 +122,9 @@ class FieldSpec:
     a warning, which means the name still has to be known."""
 
     choices: tuple[str, ...] | None
+    secret: bool
+    """A pydantic secret type, or a list of one: its value is never printed."""
+
     info: FieldInfo
 
     @property
@@ -513,6 +531,7 @@ def _leaf(
         short=meta.short,
         env_name=env_name_for(path, settings.env_prefix),
         choices=_choices(bare),
+        secret=_is_secret(bare),
         info=info,
     )
 
@@ -603,6 +622,12 @@ def _split_none(tp: Any) -> tuple[Any, bool]:
         return _strip_annotated(rest[0]), True
     # Rebuilt rather than re-subscripted: `int | str` is the modern spelling.
     return reduce(or_, rest), True
+
+
+def _is_secret(tp: Any) -> bool:
+    # `Secret[int]` is a generic alias rather than a class; its origin is the class.
+    cls = get_origin(tp) or tp
+    return isinstance(cls, type) and issubclass(cls, SECRET_TYPES)
 
 
 def _choices(tp: Any) -> tuple[str, ...] | None:

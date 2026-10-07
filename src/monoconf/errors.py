@@ -205,7 +205,10 @@ def _problem(detail: ErrorDetails, field: FieldSpec | None) -> str:
             # A model-level check: the input is a whole table, and quoting it
             # back would bury the reason.
             return message
-    shown = _shown(detail["input"])
+    # A rejected secret is usually a near miss of the real one: never quote it.
+    shown = (
+        "the secret" if field is not None and field.secret else _shown(detail["input"])
+    )
     if kind in _CHOICE_ERRORS:
         choices = None if field is None else field.choices
         if choices is None:

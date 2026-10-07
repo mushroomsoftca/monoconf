@@ -12,7 +12,7 @@ from enum import StrEnum
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Secret, SecretStr
 
 from monoconf import Config, Field, HelpRequested, settings
 
@@ -173,3 +173,34 @@ def test_help_shows_a_default_resolved_from_the_environment() -> None:
     # the whole reason help renders after the lower layers have resolved.
     assert "[9090]" in caught.value.text
     assert "[8080]" not in caught.value.text
+
+
+def test_a_secret_is_masked_wherever_it_was_set(tmp_path: Path) -> None:
+    path = tmp_path / "myapp.toml"
+    path.write_text('password = "from-the-file"\n')
+
+    class Guarded(Config):
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=path, user_config=None
+        )
+
+        password: SecretStr = SecretStr("")
+        api_key: SecretStr = SecretStr("from-the-schema")
+        token: SecretStr = SecretStr("")
+        pin: Secret[int] | None = None
+        keys: list[SecretStr] = []
+
+    with pytest.raises(HelpRequested) as caught:
+        Guarded.resolve(argv=["--help"], env={"MYAPP_KEYS": '["k-one", "k-two"]'})
+    text = caught.value.text
+    # Help output gets pasted into tickets: a secret is never in it, whichever
+    # layer set it, and it is masked exactly as --show-config masks it.
+    for secret in ("from-the-file", "from-the-schema", "k-one", "k-two"):
+        assert secret not in text
+    assert re.search(r"--password PASSWORD\s+\[\*{10}\]", text)
+    assert re.search(r"--api-key API_KEY\s+\[\*{10}\]", text)
+    assert re.search(r"--key KEY\s+Repeatable\. \[\*{10}, \*{10}\]", text)
+    # An empty secret and an unset one are still told apart from a set one: that
+    # is the question an operator chasing a failed login needs answered.
+    assert re.search(r'--token TOKEN\s+\[""\]', text)
+    assert re.search(r"--pin PIN\s+\[none\]", text)

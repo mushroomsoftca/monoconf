@@ -24,10 +24,10 @@
 > | Root table | The root table in a shared file; A dotted root table shadowing a field |
 > | Parsing | Lax coercion is the whole of it |
 > | Unknown keys | Unknown environment variables; The root table in a shared file |
-> | Help output | Metavar derivation; `--help` is never withheld |
-> | `--show-config` | --show-config output; `--show-config` does not need the positionals; What `--show-config` dumps |
+> | Help output | Metavar derivation; `--help` is never withheld; Secrets are never printed |
+> | `--show-config` | --show-config output; `--show-config` does not need the positionals; What `--show-config` dumps; Secrets are never printed |
 > | Exception hierarchy | HelpRequested and ShowConfigRequested |
-> | Rewriting validation errors | Rewritten validation errors |
+> | Rewriting validation errors | Rewritten validation errors; Secrets are never printed |
 > | Snapshot tests | Snapshots are plain files |
 > | Layout; Build order (M9) | Three examples; Publishing is by hand |
 
@@ -1077,3 +1077,26 @@ and a CI job pinned to 2.8 keeps it honest.
 0.1.0 is built and checked in the repository (`uv build`, `twine check`) and uploaded to
 TestPyPI by a maintainer. There is no release workflow, and so no publishing credential
 anywhere near CI; that can change when there is a second release to automate.
+
+2026-10-07
+
+### Secrets are never printed
+
+*What `--show-config` dumps* masked a pydantic secret, but nothing said the same of the
+other two outputs, and both printed one: `--help` showed a secret resolved from a file
+or a variable as plain text in its brackets, and a rejected secret was quoted back in the
+validation error. Help output is pasted into tickets, and a rejected secret is usually a
+near miss of the real one. The rule is now general: a field whose type is `SecretStr`,
+`SecretBytes` or `Secret[T]`, or a list of one, never has its value printed by monoconf.
+
+- `--help` shows `[**********]` for a set secret, `[""]` for an empty one and `[none]`
+  for an unset nullable one. Whether a secret is set is what an operator chasing a
+  failed login needs to know; what it is never is.
+- A validation error says `the secret` where it would quote the value:
+  `token: the secret was rejected: ...`. Where the value came from is still named.
+- `--show-config` comments out a list of secrets as it does a single one. Its value is a
+  list, not a secret, so the field's type decides rather than the value's; fed back
+  live, the masks would replace every key.
+
+A validator's own message is the application's to write, and is passed through as it
+stands.

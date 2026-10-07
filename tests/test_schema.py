@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Secret, SecretBytes, SecretStr
 
 from monoconf import Config, Field, SchemaError, settings
 from monoconf.schema import FieldKind, FieldSpec, Spec, build_spec
@@ -191,7 +191,6 @@ def test_nested_models_are_recorded(spec: Spec) -> None:
 
 
 def test_annotated_metadata_survives_for_the_probe() -> None:
-    from typing import Annotated
 
     from pydantic import BeforeValidator
 
@@ -270,8 +269,6 @@ def test_multi_member_optional_union_keeps_its_members() -> None:
 
 
 def test_annotated_item_type_of_a_repeated_field() -> None:
-    from typing import Annotated
-
     from pydantic import StringConstraints
 
     class Model(Config):
@@ -286,8 +283,22 @@ def test_annotated_item_type_of_a_repeated_field() -> None:
 
 
 def test_nested_annotated_layers_are_stripped() -> None:
-    from typing import Annotated
-
     from monoconf.schema import _strip_annotated
 
     assert _strip_annotated(Annotated[Annotated[int, "inner"], "outer"]) is int
+
+
+def test_secret_types_are_recorded() -> None:
+    class Model(Config):
+        model_config = settings(app_name="myapp")
+
+        password: SecretStr = SecretStr("")
+        blob: SecretBytes = SecretBytes(b"")
+        pin: Secret[int] | None = None
+        keys: list[SecretStr] = []
+        token: Annotated[SecretStr, Field(min_length=12)] = SecretStr("x" * 12)
+        name: str = ""
+
+    by_path = build_spec(Model).by_path()
+    secret = {path for path, field in by_path.items() if field.secret}
+    assert secret == {"password", "blob", "pin", "keys", "token"}

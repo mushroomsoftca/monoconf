@@ -5,7 +5,10 @@ get a dated amendment there.
 
 ## Unreleased
 
-- Nothing yet.
+- A secret field's value is no longer printed by `--help` or quoted in a validation
+  error. Help shows `[**********]` for a set secret and `[""]` for an empty one, and
+  a rejected secret is called `the secret`. `--show-config` now also comments out a
+  list of secrets, rather than writing the masks as a live key.
 
 ## 0.1.0
 

@@ -16,14 +16,10 @@ from datetime import date, time
 from enum import Enum
 from typing import Any
 
-from pydantic import Secret, SecretBytes, SecretStr
-
 from monoconf.merge import Origin
-from monoconf.schema import Spec
+from monoconf.schema import SECRET_TYPES, Spec
 
 __all__ = ["dump"]
-
-_SECRETS: tuple[type, ...] = (Secret, SecretStr, SecretBytes)
 
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -58,8 +54,9 @@ def dump(
     earn a warning when this output is read back.
     """
     positionals = {field.path for field in spec.positionals}
+    secrets = {field.path for field in spec.fields if field.secret}
     out = [f"# {prog} resolved configuration"]
-    for table, lines in _tables(values, (), origins, positionals):
+    for table, lines in _tables(values, (), origins, positionals, secrets):
         if table:
             out.extend(("", f"[{'.'.join(_key(part) for part in table)}]"))
         out.extend(_aligned(lines))
@@ -71,6 +68,7 @@ def _tables(
     table: tuple[str, ...],
     origins: Mapping[str, Origin],
     positionals: set[str],
+    secrets: set[str],
 ) -> list[tuple[tuple[str, ...], list[_Line]]]:
     """Every table with lines of its own, scalars before subtables at each level.
 
@@ -81,10 +79,10 @@ def _tables(
     nested: list[tuple[tuple[str, ...], list[_Line]]] = []
     for name, value in values.items():
         if isinstance(value, dict):
-            nested.extend(_tables(value, (*table, name), origins, positionals))
+            nested.extend(_tables(value, (*table, name), origins, positionals, secrets))
             continue
         path = ".".join((*table, name))
-        lines.append(_leaf(name, path, value, origins, positionals))
+        lines.append(_leaf(name, path, value, origins, positionals, secrets))
     own = [(table, lines)] if lines else []
     return own + nested
 
@@ -95,6 +93,7 @@ def _leaf(
     value: Any,
     origins: Mapping[str, Origin],
     positionals: set[str],
+    secrets: set[str],
 ) -> _Line:
     key = _key(name)
     rendered = _value(value)
@@ -103,9 +102,10 @@ def _leaf(
             return _Line(f"# {key}", "positional, CLI-only, not given")
         return _Line(f"# {key} = {rendered}", "positional, CLI-only")
     origin = origins[path].describe()
-    if isinstance(value, _SECRETS):
+    if path in secrets or isinstance(value, SECRET_TYPES):
         # Shown masked, and commented out: fed back as a live key, the mask would
-        # replace the real secret with a row of asterisks.
+        # replace the real secret with a row of asterisks. The field says so for
+        # a list of secrets, whose value is a list rather than a secret.
         return _Line(f"# {key} = {rendered}", f"{origin}; secret, not shown")
     if rendered is None:
         # TOML has no null. The key stays visible, so the dump is still a complete

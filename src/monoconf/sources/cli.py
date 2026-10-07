@@ -19,7 +19,7 @@ from typing import Any, Final, NoReturn
 
 from monoconf.errors import SourceError
 from monoconf.merge import Layer, Origin, Origins, SourceKind, Values, set_leaf
-from monoconf.schema import FieldKind, FieldSpec, Spec
+from monoconf.schema import SECRET_TYPES, FieldKind, FieldSpec, Spec
 from monoconf.settings import Settings, program_name
 from monoconf.sources import Context, scalar_value
 
@@ -48,6 +48,9 @@ _USED_DEST = "_monoconf_used"
 # Help output is part of the product: a maintainer's README capture must not depend
 # on the width of the terminal that produced it.
 _HELP_WIDTH = 88
+
+# pydantic's own mask, so help and --show-config show a secret the same way.
+_MASK = "**********"
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,7 +338,8 @@ def _help_text(field: FieldSpec, resolved: Values) -> str:
         parts.append("Repeatable.")
     if not field.required and field.kind is not FieldKind.BOOL:
         # A boolean needs no bracket: which flag exists says what the default is.
-        parts.append(f"[{_display(_resolved(resolved, field))}]")
+        value = _resolved(resolved, field)
+        parts.append(f"[{_masked(value) if field.secret else _display(value)}]")
     return " ".join(parts)
 
 
@@ -347,6 +351,23 @@ def _resolved(resolved: Values, field: FieldSpec) -> Any:
             return field.default
         current = current[part]
     return current
+
+
+def _masked(value: Any) -> str:
+    """A secret's resolved value for the help text: whether it is set, never what.
+
+    A schema default arrives as a pydantic secret, a file or a variable's value as
+    the raw string. Either way it is a row of asterisks, or `""` for an empty one:
+    an operator chasing a failed login needs to know which.
+    """
+    if value is None:
+        return "none"
+    if isinstance(value, list | tuple | set | frozenset):
+        # Sorted, so a set's iteration order cannot reach the output.
+        return ", ".join(sorted(_masked(item) for item in value)) or "none"
+    if isinstance(value, SECRET_TYPES):
+        value = value.get_secret_value()
+    return '""' if value in ("", b"") else _MASK
 
 
 def _display(value: Any) -> str:

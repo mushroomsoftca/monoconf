@@ -14,6 +14,8 @@ import pytest
 from pydantic import (
     BaseModel,
     Field,
+    Secret,
+    SecretStr,
     ValidationError,
     field_validator,
     model_validator,
@@ -208,3 +210,22 @@ def test_a_value_that_never_arrived_is_required() -> None:
 
     message = failure(argv=["widgets"], model=Dropping)
     assert "dataset: is required" in message
+
+
+def test_a_rejected_secret_is_not_quoted_back() -> None:
+    class Guarded(Config):
+        model_config = settings(
+            app_name="myapp", prog="myapp", system_config=None, user_config=None
+        )
+
+        token: SecretStr = Field(SecretStr("x" * 12), min_length=12)
+        pin: Secret[int] = Secret(1234)
+
+    message = failure(
+        env={"MYAPP_TOKEN": "hunter2", "MYAPP_PIN": "12a4"}, model=Guarded
+    )
+    # A rejected secret is usually a near miss of the real one.
+    assert "hunter2" not in message
+    assert "12a4" not in message
+    assert "  token: the secret was rejected: " in message
+    assert "  pin: the secret is not a valid integer\n    from MYAPP_PIN" in message
