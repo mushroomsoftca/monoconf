@@ -29,6 +29,7 @@
 > | Exception hierarchy | HelpRequested and ShowConfigRequested |
 > | Rewriting validation errors | Rewritten validation errors; Secrets are never printed |
 > | Snapshot tests | Snapshots are plain files |
+> | Toolchain; `pyproject.toml` essentials | The package as shipped |
 > | Layout; Build order (M9) | Three examples; Publishing is by hand |
 
 ## Overview
@@ -1100,3 +1101,21 @@ near miss of the real one. The rule is now general: a field whose type is `Secre
 
 A validator's own message is the application's to write, and is passed through as it
 stands.
+
+### The package as shipped
+
+Reviewing the 0.1.0 build before its first upload changed four things about the
+package, none of them about behaviour.
+
+- **Python 3.14** joins the CI matrix and the classifiers: 3.11 to 3.14, on Ubuntu,
+  Windows and macOS. The suite passed on it unchanged.
+- **The licence** is declared as the SPDX expression `MIT` with `LICENSE` as the licence
+  file (PEP 639), not as `{ file = "LICENSE" }`, which put the whole text in the
+  metadata's License field. That takes hatchling 1.27, and PEP 639 drops the OSI
+  licence classifier.
+- **The sdist** carries `src`, `tests`, `examples`, the README, the changelog, this plan
+  and the licence: what it takes to build, test and read the package, and none of the
+  repository's own tooling (CI, agent instructions, the lockfile). Its test suite has
+  to pass from the unpacked archive, which is how a distribution packages it.
+- **The README's links** are absolute GitHub URLs. The README is also the PyPI page,
+  where a relative link to `examples/` or `PLAN.md` leads nowhere.

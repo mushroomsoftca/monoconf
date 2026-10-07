@@ -8,7 +8,8 @@ in PLAN.md to look.
 ## Status
 
 - **0.1.0 is complete** on `main`. Milestones M1–M9 have all landed; `git log` has
-  the history, and `CHANGELOG.md` has the user-visible summary.
+  the history, and `CHANGELOG.md` has the user-visible summary. Changes made since
+  0.1.0 are under its `## Unreleased` heading.
 - **Not yet published.** Uploading to TestPyPI is done by hand, by the
   maintainer. See PLAN.md, amendment *Publishing is by hand*.
 - **What's next** is the maintainer's call. PLAN.md § Deferred names the two
@@ -17,7 +18,7 @@ in PLAN.md to look.
 
 ## How to use PLAN.md
 
-It is about 1,050 lines. Don't read it whole.
+It is about 1,100 lines. Don't read it whole.
 
 - The top of the file has a table mapping each body section to the dated
   **Amendments** that override it. Check that table before relying on a body
@@ -206,3 +207,10 @@ can be tested exhaustively.
   once, on the merged result, and that pass has to be lax for the CLI and the
   environment, which deal only in strings.
 - Lists replace wholesale at every layer. Never append.
+- A pydantic secret's value is never printed. `--help`, the validation errors and
+  `--show-config` each check `FieldSpec.secret`, which also covers a list of
+  secrets, whose value is a list rather than a secret. Anything new that shows a
+  value has to check it too.
+- A path prints with the platform's separator: `\etc\myapp.toml` on Windows. A test
+  that expects text containing a path builds it with `str(Path("/etc/myapp.toml"))`,
+  never a `/` literal, or it passes on Linux and macOS and fails on Windows.

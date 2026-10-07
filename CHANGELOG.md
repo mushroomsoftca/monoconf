@@ -10,6 +10,8 @@ get a dated amendment there.
   a rejected secret is called `the secret`. `--show-config` now also comments out a
   list of secrets, rather than writing the masks as a live key.
 - Python 3.14 is tested in CI and declared in the classifiers.
+- The licence metadata is the SPDX expression `MIT`, and the sdist no longer ships
+  the repository's CI, agent instructions or lockfile.
 
 ## 0.1.0
 
