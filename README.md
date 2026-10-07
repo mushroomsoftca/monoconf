@@ -119,7 +119,8 @@ needs to hear about.
 Booleans are flags that take no value. A field that defaults to `False` becomes
 `--verbose`, and one that defaults to `True` becomes `--no-color`. Lists are
 repeated flags, one value each time: `tags: list[str]` becomes `--tag a --tag b`.
-A nested model's fields become dotted flags and variables. See
+A nested model's fields become flags and variables named by their dotted path:
+`database.host` is `--database-host` and `MYAPP_DATABASE__HOST`. See
 [`examples/nested.py`](https://github.com/mushroomsoftca/monoconf/blob/main/examples/nested.py).
 
 ## Custom types take a string
@@ -210,10 +211,25 @@ port = 5432           # default
 The output is a valid config file. If you save it and pass it back with
 `--config-override`, you get the same configuration. Required values are commented
 out because they are positional, and so are values TOML cannot express, such as
-null. Secrets are commented out as well, and shown only as their mask.
+null. Secrets are commented out as well, and shown only as their mask. A field
+typed `SecretStr`, `SecretBytes` or `Secret[T]` is never printed anywhere: `--help`
+masks it the same way, and an error message calls it "the secret" rather than
+quoting it.
 
-The same provenance is available in code: `cfg.origin_of("database.host")`
-returns an `Origin` naming the file, the variable or the flag.
+The same provenance is available in code. `cfg.origin_of("database.host")`
+returns an `Origin`:
+
+- `source` is a `SourceKind`, one per row of the precedence table: `DEFAULT`,
+  `SYSTEM_FILE`, `SYSTEM_DROPIN`, `USER_FILE`, `USER_DROPIN`, `OVERRIDE_FILE`,
+  `ENV` or `CLI`.
+- `path` is the file, for the five file layers, and `None` otherwise.
+- `detail` is the variable name, the flag (`--port`, however it was typed) or a
+  positional's metavar, and `None` for a default or a file.
+- `describe()` is the short answer that `--show-config` and the error messages
+  print: the file, the variable, the flag, or `default`.
+
+Only a configuration from `load()` or `resolve()` has provenance. One built
+directly, as `AppConfig(input_path=...)`, raises `MonoconfError` when asked.
 
 ## Errors
 
@@ -242,6 +258,24 @@ Everything monoconf raises is a subclass of `MonoconfError`:
 - `SourceError` means a bad variable or a bad argument.
 - `ValidationFailed` is raised after merging. Pydantic's original error is
   available as its `__cause__`.
+- `OutputRequested` is not a failure. `resolve()` cannot print or exit, so
+  `--help` raises `HelpRequested` and `--show-config` raises
+  `ShowConfigRequested`. Both subclasses carry the rendered output as `.text` and
+  the status `load()` would exit with as `.exit_code`, which is 0.
+
+Because `OutputRequested` is a `MonoconfError` too, code that embeds monoconf and
+reports configuration errors should catch it first:
+
+```python
+try:
+    cfg = AppConfig.resolve()
+except OutputRequested as requested:
+    print(requested.text)
+    raise SystemExit(requested.exit_code) from None
+except MonoconfError as error:
+    log.error("bad configuration: %s", error)
+    raise
+```
 
 Warnings are real `Warning` subclasses of `MonoconfWarning`, so `-W error` or
 `pytest.warns` handles them like any other warning:
