@@ -20,10 +20,10 @@
 > | The chain; Default paths | Multi-path layers; XDG_CONFIG_DIRS ordering |
 > | Merge semantics | Empty strings; Clearing a nullable list |
 > | `--config-override` | Where MYAPP_CONFIG_OVERRIDE lands; `--config-override` and its variable |
-> | Two-pass parsing | No flag abbreviation; `--help` is never withheld |
+> | Two-pass parsing | No flag abbreviation; `--help` is never withheld; A mistyped flag gets a suggestion |
 > | Root table | The root table in a shared file; A dotted root table shadowing a field |
 > | Parsing | Lax coercion is the whole of it |
-> | Unknown keys | Unknown environment variables; The root table in a shared file |
+> | Unknown keys | Unknown environment variables; The root table in a shared file; A mistyped flag gets a suggestion |
 > | Help output | Metavar derivation; `--help` is never withheld; Secrets are never printed |
 > | `--show-config` | --show-config output; `--show-config` does not need the positionals; What `--show-config` dumps; Secrets are never printed |
 > | Exception hierarchy | HelpRequested and ShowConfigRequested |
@@ -1119,3 +1119,26 @@ package, none of them about behaviour.
   to pass from the unpacked archive, which is how a distribution packages it.
 - **The README's links** are absolute GitHub URLs. The README is also the PyPI page,
   where a relative link to `examples/` or `PLAN.md` leads nowhere.
+
+### A mistyped flag gets a suggestion
+
+An unknown key in a file was answered with "did you mean", and an unknown flag only with
+argparse's `unrecognized arguments`. The flag is the likelier typo, being typed by hand
+every time, and *No flag abbreviation* makes a near miss fail outright. The command line
+now gets the same courtesy:
+
+```
+myapp: unrecognized arguments: --retires 5 (did you mean '--retries'?)
+```
+
+- Each unrecognized token that is a long flag (`--name` or `--name=value`) is matched
+  against the flags this schema generates, `--help`, and the meta-flags that are
+  enabled. A stray value and a one-letter flag are not matched: there is nothing to be
+  close to.
+- Names are compared without their leading `--`, with `difflib` and the bar a key in
+  the application's own table has to clear, 0.6. The shared prefix would otherwise make
+  every flag look like every other.
+- Several near misses get one suggestion each, in the order typed. The error is still a
+  `SourceError`, and still names every leftover argument, as argparse's did.
+- Nothing is accepted on the strength of a match: the suggestion is advice, and the
+  flag is still refused.

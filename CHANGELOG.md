@@ -5,6 +5,8 @@ get a dated amendment there.
 
 ## Unreleased
 
+- A mistyped flag is answered with a suggestion, as an unknown file key already
+  was: `unrecognized arguments: --retires 5 (did you mean '--retries'?)`.
 - A secret field's value is no longer printed by `--help` or quoted in a validation
   error. Help shows `[**********]` for a set secret and `[""]` for an empty one, and
   a rejected secret is called `the secret`. `--show-config` now also comments out a

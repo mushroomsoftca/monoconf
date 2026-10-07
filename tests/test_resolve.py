@@ -113,14 +113,17 @@ def test_boolean_flags_are_presence_only() -> None:
 
 
 def test_a_true_default_generates_only_the_negative_form() -> None:
-    with pytest.raises(SourceError, match="unrecognized arguments: --color"):
+    with pytest.raises(SourceError, match="unrecognized arguments: --color") as caught:
         resolve("--color")
+    assert "(did you mean '--no-color'?)" in str(caught.value)
 
 
 def test_booleans_take_no_value() -> None:
     # `--verbose true` would leave "true" as an extra positional.
-    with pytest.raises(SourceError, match="unrecognized arguments: true"):
+    with pytest.raises(SourceError, match="unrecognized arguments: true") as caught:
         resolve("--verbose", "true")
+    # Only a flag is matched against the flags.
+    assert "did you mean" not in str(caught.value)
 
 
 def test_repeated_flags_build_a_list() -> None:
@@ -166,13 +169,39 @@ def test_nested_fields_take_their_own_flags() -> None:
 
 
 def test_flags_are_never_abbreviated() -> None:
-    with pytest.raises(SourceError, match="unrecognized arguments: --output"):
+    with pytest.raises(SourceError, match="unrecognized arguments: --output") as caught:
         resolve("--output", "/tmp")
+    # Not accepted, but not left to guesswork either.
+    assert "(did you mean '--output-dir'?)" in str(caught.value)
 
 
 def test_an_unknown_flag_is_an_error() -> None:
-    with pytest.raises(SourceError, match="unrecognized arguments: --nope"):
+    with pytest.raises(SourceError, match="unrecognized arguments: --nope") as caught:
         resolve("--nope")
+    assert "did you mean" not in str(caught.value)
+
+
+def test_a_misspelt_flag_gets_a_suggestion() -> None:
+    with pytest.raises(SourceError) as caught:
+        resolve("--retires", "5")
+    assert str(caught.value) == (
+        "unrecognized arguments: --retires 5 (did you mean '--retries'?)"
+    )
+
+
+def test_a_misspelt_flag_written_with_its_value_gets_a_suggestion() -> None:
+    with pytest.raises(SourceError) as caught:
+        resolve("--retires=5")
+    assert str(caught.value).endswith("(did you mean '--retries'?)")
+
+
+def test_each_misspelt_flag_gets_its_own_suggestion() -> None:
+    with pytest.raises(SourceError) as caught:
+        resolve("--retires", "5", "--nope", "--prot", "9")
+    assert str(caught.value) == (
+        "unrecognized arguments: --retires 5 --nope --prot 9 (did you mean "
+        "'--retries' for '--retires', and '--port' for '--prot'?)"
+    )
 
 
 def test_a_bad_value_names_the_field_and_where_it_came_from() -> None:
@@ -225,3 +254,25 @@ def test_short_help_flag_works_too() -> None:
 def test_help_wins_even_alongside_other_arguments() -> None:
     with pytest.raises(HelpRequested):
         App.resolve(argv=["--port", "9090", "--help"], env={})
+
+
+@pytest.mark.parametrize(
+    ("typed", "meant"),
+    [("--show-conf", "--show-config"), ("--config-overide", "--config-override")],
+)
+def test_the_meta_flags_are_suggested_when_enabled(typed: str, meant: str) -> None:
+    class Meta(Config):
+        model_config = settings(
+            app_name="myapp",
+            prog="myapp",
+            system_config=None,
+            user_config=None,
+            show_config=True,
+            config_override=True,
+        )
+
+        port: int = 8080
+
+    with pytest.raises(SourceError) as caught:
+        Meta.resolve(argv=[typed], env={})
+    assert str(caught.value).endswith(f"(did you mean '{meant}'?)")

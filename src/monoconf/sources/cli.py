@@ -12,6 +12,7 @@ does all of the coercion, once, on the merged result.
 from __future__ import annotations
 
 import argparse
+import difflib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -51,6 +52,10 @@ _HELP_WIDTH = 88
 
 # pydantic's own mask, so help and --show-config show a secret the same way.
 _MASK = "**********"
+
+# How close a mistyped flag has to be to suggest a real one: the bar a file key in
+# the application's own table has to clear for the same courtesy.
+_CLOSE = 0.6
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +178,11 @@ def collect(spec: Spec, ctx: Context) -> Layer:
     this value what it is", which should not need an input file to ask.
     """
     parser = build_parser(spec, {}, positionals_optional=ctx.show_config)
-    namespace = parser.parse_args(list(ctx.argv))
+    # parse_args, less its error for leftovers, which is raised here instead so
+    # that it can suggest what a mistyped flag was meant to be.
+    namespace, extras = parser.parse_known_args(list(ctx.argv))
+    if extras:
+        raise SourceError(_unrecognized(extras, _flags(spec)))
     values: Values = {}
     origins: Origins = {}
     used: dict[str, str] = getattr(namespace, _USED_DEST, {})
@@ -186,6 +195,44 @@ def collect(spec: Spec, ctx: Context) -> Layer:
         detail = used.get(dest, field.flag or field.metavar)
         origins[field.path] = Origin(SourceKind.CLI, detail=detail)
     return values, origins
+
+
+def _flags(spec: Spec) -> list[str]:
+    settings = spec.settings
+    flags = ["--help"]
+    if settings.config_override:
+        flags.append("--config-override")
+    if settings.show_config:
+        flags.append("--show-config")
+    flags.extend(field.flag for field in spec.options if field.flag is not None)
+    return flags
+
+
+def _unrecognized(extras: Sequence[str], flags: Sequence[str]) -> str:
+    """argparse's message for leftover arguments, with a suggestion for each flag.
+
+    Only a long flag is matched: a stray value has no near miss, and a one-letter
+    flag is too short for a guess to mean anything. Names are compared without the
+    `--` every flag shares, which would otherwise make `--nope` look like `--mode`.
+    """
+    message = f"unrecognized arguments: {' '.join(extras)}"
+    names = [flag.removeprefix("--") for flag in flags]
+    matches: list[tuple[str, str]] = []
+    for token in extras:
+        if not token.startswith("--"):
+            continue
+        typed = token.partition("=")[0]
+        close = difflib.get_close_matches(
+            typed.removeprefix("--"), names, n=1, cutoff=_CLOSE
+        )
+        if close:
+            matches.append((typed, f"--{close[0]}"))
+    if not matches:
+        return message
+    if len(matches) == 1:
+        return f"{message} (did you mean '{matches[0][1]}'?)"
+    pairs = [f"'{flag}' for '{typed}'" for typed, flag in matches]
+    return f"{message} (did you mean {', '.join(pairs[:-1])}, and {pairs[-1]}?)"
 
 
 def render_help(spec: Spec, resolved: Values) -> str:
