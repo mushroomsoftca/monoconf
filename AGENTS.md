@@ -18,7 +18,7 @@ in PLAN.md to look.
 
 ## How to use PLAN.md
 
-It is about 1,100 lines. Don't read it whole.
+It is about 1,200 lines. Don't read it whole.
 
 - The top of the file has a table mapping each body section to the dated
   **Amendments** that override it. Check that table before relying on a body
@@ -217,3 +217,6 @@ can be tested exhaustively.
 - A path prints with the platform's separator: `\etc\myapp.toml` on Windows. A test
   that expects text containing a path builds it with `str(Path("/etc/myapp.toml"))`,
   never a `/` literal, or it passes on Linux and macOS and fails on Windows.
+- A test never needs two clock readings to differ. Windows' clock is coarse enough
+  that two calls to `datetime.now()` can return the same instant, so the test
+  fails there now and then. To see that a factory runs again, count its calls.
